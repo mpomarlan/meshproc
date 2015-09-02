@@ -1,0 +1,35 @@
+<package>
+  <name>meshproc_csg</name>
+  <version>0.1.0</version>
+
+  <description>
+    Performs Constructive Solid Geometry operations on meshes given by the user.
+    Operations: Union, Intersection, Difference, Symmetric Difference.
+    Input formats:
+      - files (URLs given in service call messages): 3DS, OBJ, OFF, PLY, STL.
+      - ROS messages: shape_msgs/Mesh
+    Output formats: same as input.
+    Uses CGAL for mesh operations.
+    Includes a redistribution of libkdtree++ (just the hpp files!).
+  </description>
+
+  <author email="blandc@cs.uni-bremen.de">Mihai Pomarlan</author>
+  <maintainer email="blandc@cs.uni-bremen.de">Mihai Pomarlan</maintainer>
+  <license>BSD</license>
+
+  <url type="website">http://open-ease.org</url>
+  <url type="bugtracker">https://github.com/mpomarlan/meshproc/issues</url>
+  <url type="repository">https://github.com/mpomarlan/meshproc</url>
+
+  <buildtool_depend>catkin</buildtool_depend> 
+
+  <build_depend>trimesh</build_depend>
+  <build_depend>meshproc_msgs</build_depend>
+  <build_depend>roscpp</build_depend>
+
+ 
+  <run_depend>trimesh</run_depend>
+  <run_depend>meshproc_msgs</run_depend>
+  <run_depend>roscpp</run_depend>
+
+</package>

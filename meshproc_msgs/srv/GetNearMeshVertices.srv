@@ -1,0 +1,7 @@
+string mesh_name
+geometry_msgs/Point point
+float64 distance
+---
+int8 mesh_loaded
+geometry_msgs/Point[] neighbors
+

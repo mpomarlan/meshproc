@@ -1,0 +1,16 @@
+<package>
+  <name>trimesh</name>
+  <version>2.12.0</version> <!--Alpha version for the ROS package, but the trimesh code itself is Trimesh2.12-->
+  <description>Mesh utils: a redistribution of the trimesh2 library.</description>
+
+  <author email="smr@princeton.edu">Szymon Rusinkiewicz</author>
+  <maintainer email="blandc@cs.uni-bremen.de">Mihai Pomarlan</maintainer>
+
+  <license>GPL</license>  
+  <url type="website">http://gfx.cs.princeton.edu/proj/trimesh2/</url>
+  <url type="bugtracker">https://github.com/mpomarlan/meshproc/issues</url>
+  <url type="repository">https://github.com/mpomarlan/meshproc</url>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+</package>

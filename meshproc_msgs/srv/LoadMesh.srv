@@ -1,0 +1,8 @@
+string mesh_name
+shape_msgs/Mesh[] mesh_msgs
+string[] mesh_filenames
+float64 duplicate_sq_dist
+---
+int8 loaded_mesh
+int8 io_error
+int8 mesh_already_loaded

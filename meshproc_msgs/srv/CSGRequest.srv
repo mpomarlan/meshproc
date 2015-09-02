@@ -1,0 +1,23 @@
+#Enum for selecting operations
+int8 UNION=0
+int8 INTERSECTION=1
+int8 DIFFERENCE=2
+int8 SYMMETRIC_DIFFERENCE=3
+int8 MINKOWSKI_SUM=4
+int8 MINKOWSKI_EROSION=5
+
+int8 operation
+string mesh_A
+string mesh_B
+string mesh_R
+int8 return_result
+int8 result_to_file
+string result_filename
+---
+int8 operation_performed
+int8 file_written
+int8 mesh_A_loaded
+int8 mesh_B_loaded
+int8 mesh_A_csg_safe
+int8 mesh_B_csg_safe
+shape_msgs/Mesh result

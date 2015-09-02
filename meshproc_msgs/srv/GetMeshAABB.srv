@@ -1,0 +1,10 @@
+string mesh_name
+---
+int8 mesh_loaded
+float64 max_x
+float64 min_x
+float64 max_y
+float64 min_y
+float64 max_z
+float64 min_z
+

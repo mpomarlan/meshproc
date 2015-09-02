@@ -1,0 +1,29 @@
+<!-- <?xml version="1.0"?> -->
+<package>
+  <name>meshproc</name>
+  <version>0.1.0</version>
+  <description>
+     A few ROS nodes for constructive solid geometry queries on meshes and point set -> mesh conversion.
+     Includes a redistribution of the TriMesh2 lib (just the lib files!), used here for mesh I/O.
+     Includes a redistribution of libkdtree++ (just the hpp files!) for vertex near-neighbors queries.
+  </description>
+
+  <maintainer email="blandc@cs.uni-bremen.de">Mihai Pomarlan</maintainer>
+  <author email="blandc@cs.uni-bremen.de">Mihai Pomarlan</author>
+
+  <license>BSD</license>
+
+  <url type="bugtracker">https://github.com/mpomarlan/meshproc/issues</url>
+  <url type="repository">https://github.com/mpomarlan/meshproc</url>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <!--<run_depend>meshproc_msgs</run_depend>-->
+  <run_depend>trimesh</run_depend>
+  <run_depend>meshproc_csg</run_depend>
+  <!--<run_depend>meshproc_p2m</run_depend>-->
+
+  <export>
+    <metapackage/>
+  </export>
+</package>

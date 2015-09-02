@@ -1,0 +1,13 @@
+string mesh_name
+---
+int8 is_loaded
+int8 is_closed
+int8 is_manifold
+int8 is_orientable
+int8 is_safe_for_csg
+int32 num_vertices
+int32 num_faces
+int32 num_edges
+int32 num_connected_components
+int32 Euler_characteristic
+
