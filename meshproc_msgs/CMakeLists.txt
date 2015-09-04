@@ -16,6 +16,7 @@ set(MSG_FILES
 
 set(SRV_FILES
   AffineTransformMesh.srv
+  ConvexDecomposition.srv
   GetMesh.srv
   GetMeshAABB.srv
   GetNearMeshVertices.srv

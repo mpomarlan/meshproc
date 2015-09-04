@@ -39,6 +39,8 @@ public:
     bool setFromMinkowskiErosion(MeshEntry const& A, MeshEntry const& B);
     bool setFromSelectComponent(MeshEntry const& A, meshproc_csg::Point const& P);
 
+    bool getConvexComponents(std::vector<MeshEntry*> &components) const;
+
     bool writeToFile(std::string const& filename);
     bool writeToMsg(shape_msgs::Mesh &message);
 
@@ -69,7 +71,7 @@ public:
 
 private:
     bool loadFromTrimesh(trimesh::TriMesh *M, double duplicate_sq_dist);
-    void remove_duplicates(trimesh::TriMesh *M, double duplicate_sq_dist);
+    void remove_duplicates(trimesh::TriMesh *M, double duplicate_dist) const;
     void update_properties(void);
     bool update_mesh(void);
     bool triangulate_mesh(void);

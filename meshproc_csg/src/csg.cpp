@@ -2,6 +2,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <cstdio>
 
 #include <CGAL/Exact_predicates_exact_constructions_kernel.h>
 #include <CGAL/Homogeneous.h>
@@ -24,6 +25,7 @@
 #include <meshproc_msgs/GetMeshAABB.h>
 #include <meshproc_msgs/GetNearMeshVertices.h>
 #include <meshproc_msgs/GetMesh.h>
+#include <meshproc_msgs/ConvexDecomposition.h>
 
 #include <meshproc_csg/kdtree++/kdtree.hpp>
 
@@ -344,6 +346,58 @@ bool do_GetNearMeshVertices(meshproc_msgs::GetNearMeshVertices::Request &req,
     return true;
 }
 
+bool do_ConvexDecomposition(meshproc_msgs::ConvexDecomposition::Request &req,
+                            meshproc_msgs::ConvexDecomposition::Response &res)
+{
+    MeshMap::iterator itA = loadedMeshes.find(req.mesh_A);
+    res.mesh_loaded = true;
+    res.nr_components = 0;
+    res.mesh_names.clear();
+    res.file_written.clear();
+    res.components.clear();
+    if(itA == loadedMeshes.end())
+    {
+        res.mesh_loaded = false;
+        return true;
+    }
+    std::vector<MeshEntry*> components; components.clear();
+    std::cerr << "Getting components" << std::endl;
+    itA->second->getConvexComponents(components);
+    std::cerr << "Components obtained" << std::endl;
+    int maxK = res.nr_components = components.size();
+    for(int k = 0; k < maxK; k++)
+    {
+        char nr_str[20];
+        std::sprintf(nr_str, "%d", k);
+        std::string cName = req.mesh_R + nr_str;
+        MeshMap::iterator itR = loadedMeshes.find(cName);
+        if(itR == loadedMeshes.end())
+        {
+            itR = loadedMeshes.insert(loadedMeshes.begin(),
+                                      std::pair<std::string, MeshEntry*>(cName, components[k]));
+        }
+        else
+        {
+            delete itR->second;
+            itR->second = components[k];
+        }
+        MeshEntry* R = itR->second;
+        res.mesh_names.push_back(cName);
+        if(req.return_result)
+        {
+            res.components.push_back(shape_msgs::Mesh());
+            R->writeToMsg(res.components[k]);
+        }
+        if(req.result_to_file)
+        {
+            res.file_written.push_back(R->writeToFile(req.result_filename + nr_str + req.result_filename_extension));
+            res.file_names.push_back(req.result_filename + nr_str + req.result_filename_extension);
+        }
+
+    }
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
   ros::init(argc, argv, "meshproc_csg");
@@ -359,6 +413,7 @@ int main(int argc, char *argv[])
   ros::ServiceServer GetMeshAABB_service = n.advertiseService("meshproc_csg/GetMeshAABB", do_GetMeshAABB);
   ros::ServiceServer GetNearMeshVertices_service = n.advertiseService("meshproc_csg/GetNearMeshVertices", do_GetNearMeshVertices);
   ros::ServiceServer GetMesh_service = n.advertiseService("meshproc_csg/GetMesh", do_GetMesh);
+  ros::ServiceServer ConvexDecomposition_service = n.advertiseService("meshproc_csg/ConvexDecomposition", do_ConvexDecomposition);
   ROS_INFO(" ... all done.");
 
   ros::spin();

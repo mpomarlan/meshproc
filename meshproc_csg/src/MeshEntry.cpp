@@ -12,6 +12,7 @@
 #include <CGAL/IO/Nef_polyhedron_iostream_3.h>
 #include <CGAL/triangulate_polyhedron.h>
 #include <CGAL/bounding_box.h>
+#include <CGAL/convex_decomposition_3.h>
 
 #include <trimesh/TriMesh.h>
 #include <trimesh/TriMesh_algo.h>
@@ -74,20 +75,24 @@ MeshEntry::MeshEntry()
     transform_empty = true;
     base_mesh = this;
     transform = Eigen::Affine3d();
+    dependents.clear();
 }
 
 MeshEntry::~MeshEntry()
 {
+    process_transforms();
 }
 
 void MeshEntry::clear(void)
 {
+    process_transforms();
     props_updated = false;
     triangulated = false;
     mesh_data.clear();
     transform_empty = true;
     base_mesh = this;
     nef_polyhedron.clear();
+    dependents.clear();
 }
 bool MeshEntry::loadFromFile(std::string const& filename, double duplicate_sq_dist)
 {
@@ -192,6 +197,32 @@ bool MeshEntry::setFromMinkowskiErosion(MeshEntry const& A, MeshEntry const& B)
 bool MeshEntry::setFromSelectComponent(MeshEntry const& A, meshproc_csg::Point const& P)
 {
     process_transforms();
+    return true;
+}
+
+bool MeshEntry::getConvexComponents(std::vector<MeshEntry*> &components) const
+{
+    Nef_polyhedron cN = nef_polyhedron.regularization();
+    CGAL::convex_decomposition_3(cN);
+    cN = cN.interior();
+    int k = 0;
+    int bk = components.size();
+    std::cerr << "CGAL did decomp into " << cN.number_of_volumes() - 1 << " components." <<std::endl;
+    for(Nef_polyhedron::Volume_const_iterator it = ++cN.volumes_begin();
+        it != cN.volumes_end(); it++)
+        if(it->mark() && it->is_valid())
+        {
+            Polyhedron P;
+            P.clear();
+            cN.convert_inner_shell_to_polyhedron(it->shells_begin(), P);
+            if((!P.is_empty()) && P.is_valid() && P.is_closed() && (3 < P.size_of_vertices()))
+            {
+                components.push_back(new MeshEntry());
+                components[bk+k]->mesh_data = P;
+                components[bk+k]->nef_polyhedron = Nef_polyhedron(P);
+                k++;
+            }
+        }
     return true;
 }
 
@@ -331,12 +362,12 @@ int MeshEntry::getEulerCharacteristic(void)
     return Euler_characteristic;
 }
 
-void MeshEntry::remove_duplicates(trimesh::TriMesh *M, double duplicate_sq_dist)
+void MeshEntry::remove_duplicates(trimesh::TriMesh *M, double duplicate_dist) const
 {
     std::vector<size_t> replacements; replacements.clear();
     MeshEntry::tree_type kdtree;
     kdtree.clear();
-    double threshold = std::sqrt(duplicate_sq_dist);
+    double threshold = duplicate_dist;
     int maxK = M->vertices.size();
     replacements.reserve(maxK);
     for(int k = 0; k < maxK; k++)
@@ -365,12 +396,24 @@ void MeshEntry::remove_duplicates(trimesh::TriMesh *M, double duplicate_sq_dist)
         }
     }
     maxK = M->faces.size();
-    for(int k = 0; k < maxK; k++)
+    for(int k = 0; k < maxK; )
     {
         M->faces[k].v[0] = replacements[M->faces[k].v[0]];
         M->faces[k].v[1] = replacements[M->faces[k].v[1]];
         M->faces[k].v[2] = replacements[M->faces[k].v[2]];
+        if((M->faces[k].v[0] != M->faces[k].v[1]) &&
+           (M->faces[k].v[1] != M->faces[k].v[2]) &&
+           (M->faces[k].v[2] != M->faces[k].v[0]))
+        {
+            k++;
+        }
+        else
+        {
+            maxK--;
+            M->faces[k] = M->faces[maxK];
+        }
     }
+    M->faces.resize(maxK);
     trimesh::remove_unused_vertices(M);
     replacements.clear();
     kdtree.clear();
