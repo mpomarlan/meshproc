@@ -1,6 +1,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <CGAL/Exact_predicates_exact_constructions_kernel.h>
@@ -94,7 +95,7 @@ void MeshEntry::clear(void)
     nef_polyhedron.clear();
     dependents.clear();
 }
-bool MeshEntry::loadFromFile(std::string const& filename, double duplicate_sq_dist)
+bool MeshEntry::loadFromFile(std::string const& filename, double duplicate_dist)
 {
     trimesh::TriMesh *M;
     bool fileAccessible = false;
@@ -105,10 +106,10 @@ bool MeshEntry::loadFromFile(std::string const& filename, double duplicate_sq_di
     if(!fileAccessible)
         return false;
     M = trimesh::TriMesh::read(filename.c_str());
-    loadFromTrimesh(M, duplicate_sq_dist);
+    loadFromTrimesh(M, duplicate_dist);
     return true;
 }
-bool MeshEntry::loadFromMsg(shape_msgs::Mesh const& message, double duplicate_sq_dist)
+bool MeshEntry::loadFromMsg(shape_msgs::Mesh const& message, double duplicate_dist)
 {
     trimesh::TriMesh M;
     M.vertices.clear(); M.vertices.reserve(message.vertices.size());
@@ -123,11 +124,11 @@ bool MeshEntry::loadFromMsg(shape_msgs::Mesh const& message, double duplicate_sq
         M.faces.push_back(trimesh::TriMesh::Face(message.triangles[k].vertex_indices[0],
                                                  message.triangles[k].vertex_indices[1],
                                                  message.triangles[k].vertex_indices[2]));
-    loadFromTrimesh(&M, duplicate_sq_dist);
+    loadFromTrimesh(&M, duplicate_dist);
 }
-bool MeshEntry::loadFromTrimesh(trimesh::TriMesh *M, double duplicate_sq_dist)
+bool MeshEntry::loadFromTrimesh(trimesh::TriMesh *M, double duplicate_dist)
 {
-    remove_duplicates(M, duplicate_sq_dist);
+    MeshEntry::remove_duplicates(M, duplicate_dist);
     Build_mesh<Polyhedron::HalfedgeDS> build_mesh(M);
     mesh_data.delegate(build_mesh);
     nef_polyhedron = Nef_polyhedron(mesh_data);
@@ -226,29 +227,26 @@ bool MeshEntry::getConvexComponents(std::vector<MeshEntry*> &components) const
     return true;
 }
 
-bool MeshEntry::writeToFile(std::string const& filename)
+bool MeshEntry::write_to_trimesh(Polyhedron const& P, trimesh::TriMesh *M)
 {
-    transformMesh();
-    triangulate_mesh();
-    trimesh::TriMesh M;
-    M.vertices.clear();
-    M.faces.clear();
-    M.vertices.reserve(mesh_data.size_of_vertices());
-    M.faces.reserve(mesh_data.size_of_facets());
-    for(Polyhedron::Vertex_const_iterator it = mesh_data.vertices_begin();
-        it != mesh_data.vertices_end(); it++)
+    M->vertices.clear();
+    M->faces.clear();
+    M->vertices.reserve(P.size_of_vertices());
+    M->faces.reserve(P.size_of_facets());
+    for(Polyhedron::Vertex_const_iterator it = P.vertices_begin();
+        it != P.vertices_end(); it++)
     {
-        M.vertices.push_back(trimesh::point(::CGAL::to_double(it->point().x()),
-                                            ::CGAL::to_double(it->point().y()),
-                                            ::CGAL::to_double(it->point().z())));
+        M->vertices.push_back(trimesh::point(::CGAL::to_double(it->point().x()),
+                                             ::CGAL::to_double(it->point().y()),
+                                             ::CGAL::to_double(it->point().z())));
 
     }
 
     typedef CGAL::Inverse_index<Polyhedron::Vertex_const_iterator> Index;
-    Index index( mesh_data.vertices_begin(), mesh_data.vertices_end());
+    Index index( P.vertices_begin(), P.vertices_end());
 
-    for(Polyhedron::Facet_const_iterator it = mesh_data.facets_begin();
-        it != mesh_data.facets_end(); it++)
+    for(Polyhedron::Facet_const_iterator it = P.facets_begin();
+        it != P.facets_end(); it++)
     {
         Polyhedron::Halfedge_around_facet_const_circulator hc_end = it->facet_begin();
         Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end; hc_a++;
@@ -260,14 +258,23 @@ bool MeshEntry::writeToFile(std::string const& filename)
         //triangulate_mesh()
         do
         {
-            M.faces.push_back(trimesh::TriMesh::Face(index[Polyhedron::Vertex_const_iterator(hc_end->vertex())],
-                                                     index[Polyhedron::Vertex_const_iterator(hc_a->vertex())],
-                                                     index[Polyhedron::Vertex_const_iterator(hc_b->vertex())]));
+            M->faces.push_back(trimesh::TriMesh::Face(index[Polyhedron::Vertex_const_iterator(hc_end->vertex())],
+                                                      index[Polyhedron::Vertex_const_iterator(hc_a->vertex())],
+                                                      index[Polyhedron::Vertex_const_iterator(hc_b->vertex())]));
             hc_a++;
             hc_b++;
         }while(hc_b != hc_end);
     }
+    return true;
+}
 
+
+bool MeshEntry::writeToFile(std::string const& filename)
+{
+    transformMesh();
+    triangulate_mesh();
+    trimesh::TriMesh M;
+    MeshEntry::write_to_trimesh(mesh_data, &M);
     bool wrote_file = M.write(filename.c_str());
     return wrote_file;
 }
@@ -362,7 +369,7 @@ int MeshEntry::getEulerCharacteristic(void)
     return Euler_characteristic;
 }
 
-void MeshEntry::remove_duplicates(trimesh::TriMesh *M, double duplicate_dist) const
+void MeshEntry::remove_duplicates(trimesh::TriMesh *M, double duplicate_dist)
 {
     std::vector<size_t> replacements; replacements.clear();
     MeshEntry::tree_type kdtree;
@@ -581,6 +588,154 @@ bool MeshEntry::getNearVertices(double x, double y, double z, double distance, s
         }
     }
     return true;
+}
+
+double MeshEntry::manhattan_distance(double xA, double yA, double zA,
+                                     double xB, double yB, double zB)
+{
+    double dx = xA - xB; if(dx < 0.0) dx = -dx;
+    double dy = yA - yB; if(dy < 0.0) dy = -dy;
+    double dz = zA - zB; if(dz < 0.0) dz = -dz;
+    double retq = dx;
+    if(retq < dy)
+        retq = dy;
+    if(retq < dz)
+        retq = dz;
+    return retq;
+}
+
+bool MeshEntry::getMeshSkeleton(bool approximate, double duplicate_distance, std::vector<double> &x, std::vector<double> &y,
+                                std::vector<double> &z, std::vector<int> &e_L, std::vector<int> &e_R) const
+{
+    x.clear();
+    y.clear();
+    z.clear();
+    e_L.clear();
+    e_R.clear();
+    //if(approximate): right now, only use the approximate version
+    trimesh::TriMesh M;
+    M.vertices.clear();
+    M.faces.clear();
+    MeshEntry::write_to_trimesh(mesh_data, &M);
+    int maxK = M.faces.size();
+    std::vector<std::pair<int, int> > vertex_replacements;
+    MeshEntry::init_sets(M.vertices.size(), vertex_replacements);
+    for(int k = 0; k < maxK; k++)
+    {
+        double xA, xB, xC, yA, yB, yC, zA, zB, zC;
+        int a, b, c;
+        a = M.faces[k].v[0]; xA = M.vertices[a][0]; yA = M.vertices[a][1]; zA = M.vertices[a][2];
+        b = M.faces[k].v[1]; xB = M.vertices[b][0]; yB = M.vertices[b][1]; zB = M.vertices[b][2];
+        c = M.faces[k].v[2]; xC = M.vertices[c][0]; yC = M.vertices[c][1]; zC = M.vertices[c][2];
+        if(MeshEntry::manhattan_distance(xA, yA, zA, xB, yB, zB) < duplicate_distance)
+            MeshEntry::merge_sets(a, b, vertex_replacements);
+        if(MeshEntry::manhattan_distance(xC, yC, zC, xB, yB, zB) < duplicate_distance)
+            MeshEntry::merge_sets(c, b, vertex_replacements);
+        if(MeshEntry::manhattan_distance(xA, yA, zA, xC, yC, zC) < duplicate_distance)
+            MeshEntry::merge_sets(a, c, vertex_replacements);
+    }
+
+    int remaining_vertices = 0;
+    maxK = M.vertices.size();
+    for(int k = 0; k < maxK; k++)
+        if(k == MeshEntry::get_set_index(k, vertex_replacements))
+            remaining_vertices++;
+    x.reserve(remaining_vertices);
+    y.reserve(remaining_vertices);
+    z.reserve(remaining_vertices);
+    e_L.reserve(remaining_vertices);
+    e_R.reserve(remaining_vertices);
+    std::vector<int> new_indices;
+    new_indices.clear(); new_indices.resize(maxK);
+    for(int k = 0, ci = 0; k < maxK; k++)
+    {
+        if(k == MeshEntry::get_set_index(k, vertex_replacements))
+        {
+            new_indices[k] = ci; ci++;
+            x.push_back(M.vertices[k][0]);
+            y.push_back(M.vertices[k][1]);
+            z.push_back(M.vertices[k][2]);
+        }
+    }
+    std::vector<std::vector<bool> > marked_edge;
+    marked_edge.clear(); marked_edge.resize(remaining_vertices);
+    for(int k = 0; k < remaining_vertices; k++)
+    {
+        marked_edge[k].clear(); marked_edge[k].resize(remaining_vertices, false);
+    }
+    maxK = M.faces.size();
+    for(int k = 0; k < maxK; k++)
+    {
+        int a, b, c;
+        a = new_indices[MeshEntry::get_set_index(M.faces[k].v[0], vertex_replacements)];
+        b = new_indices[MeshEntry::get_set_index(M.faces[k].v[1], vertex_replacements)];
+        c = new_indices[MeshEntry::get_set_index(M.faces[k].v[2], vertex_replacements)];
+        if((a != b) && (!marked_edge[a][b]))
+        {
+            marked_edge[a][b] = marked_edge[b][a] = true;
+            e_L.push_back(a);
+            e_R.push_back(b);
+        }
+        if((a != c) && (!marked_edge[a][c]))
+        {
+            marked_edge[a][c] = marked_edge[c][a] = true;
+            e_L.push_back(a);
+            e_R.push_back(c);
+        }
+        if((c != b) && (!marked_edge[c][b]))
+        {
+            marked_edge[c][b] = marked_edge[b][c] = true;
+            e_L.push_back(c);
+            e_R.push_back(b);
+        }
+    }
+
+    return true;
+}
+
+int MeshEntry::init_sets(int maxK, std::vector<std::pair<int, int> > &elements)
+{
+    elements.clear();
+    elements.reserve(maxK);
+    for(int k = 0; k < maxK; k++)
+        elements.push_back(std::pair<int, int>(k, 0));
+    return maxK;
+}
+
+int MeshEntry::get_set_index(int index, std::vector<std::pair<int, int> > &elements)
+{
+    if(index != elements[index].first)
+    {
+        elements[index].first = get_set_index(elements[index].first, elements);
+    }
+    return elements[index].first;
+}
+
+int MeshEntry::merge_sets(int index_A, int index_B, std::vector<std::pair<int, int> > &elements)
+{
+    int p_A = get_set_index(index_A, elements);
+    int p_B = get_set_index(index_B, elements);
+
+    if(p_A != p_B)
+    {
+        if(elements[p_A].second < elements[p_B].second)
+        {
+            elements[p_A].first = p_B;
+            p_A = p_B;
+        }
+        else if(elements[p_B].second < elements[p_A].second)
+        {
+            elements[p_B].first = p_A;
+        }
+        else
+        {
+            elements[p_B].first = p_A;
+            elements[p_A].second = elements[p_A].second + 1;
+        }
+        elements[p_B].first = p_A;
+        elements[index_B].first = p_A;
+    }
+    return p_A;
 }
 
 }

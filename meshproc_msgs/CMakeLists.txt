@@ -19,6 +19,7 @@ set(SRV_FILES
   ConvexDecomposition.srv
   GetMesh.srv
   GetMeshAABB.srv
+  GetMeshSkeleton.srv
   GetNearMeshVertices.srv
   LoadMesh.srv
   CSGRequest.srv

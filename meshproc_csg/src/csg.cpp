@@ -1,6 +1,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 #include <cstdio>
 
@@ -26,6 +27,7 @@
 #include <meshproc_msgs/GetNearMeshVertices.h>
 #include <meshproc_msgs/GetMesh.h>
 #include <meshproc_msgs/ConvexDecomposition.h>
+#include <meshproc_msgs/GetMeshSkeleton.h>
 
 #include <meshproc_csg/kdtree++/kdtree.hpp>
 
@@ -61,7 +63,7 @@ bool do_LoadMesh(meshproc_msgs::LoadMesh::Request &req, meshproc_msgs::LoadMesh:
         for(int k = 0; (k < maxK) && goOn; k++)
         {
             ROS_INFO("    loading part from file %s", req.mesh_filenames[k].c_str());
-            goOn = R->loadFromFile(req.mesh_filenames[k], req.duplicate_sq_dist);
+            goOn = R->loadFromFile(req.mesh_filenames[k], req.duplicate_dist);
         }
         if(!goOn)
         {
@@ -76,7 +78,7 @@ bool do_LoadMesh(meshproc_msgs::LoadMesh::Request &req, meshproc_msgs::LoadMesh:
         for(int k = 0; k < maxK; k++)
         {
             ROS_INFO("    loading part from message");
-            R->loadFromMsg(req.mesh_msgs[k], req.duplicate_sq_dist);
+            R->loadFromMsg(req.mesh_msgs[k], req.duplicate_dist);
         }
     }
     ROS_INFO("    Loading done.");
@@ -398,6 +400,35 @@ bool do_ConvexDecomposition(meshproc_msgs::ConvexDecomposition::Request &req,
     return true;
 }
 
+bool do_GetMeshSkeleton(meshproc_msgs::GetMeshSkeleton::Request &req,
+                        meshproc_msgs::GetMeshSkeleton::Response &res)
+{
+    MeshMap::iterator itA = loadedMeshes.find(req.mesh_name);
+    res.mesh_loaded = true;
+    res.vertices.clear();
+    res.edge_ends_L.clear();
+    res.edge_ends_R.clear();
+    if(itA == loadedMeshes.end())
+    {
+        res.mesh_loaded = false;
+        return true;
+    }
+    std::vector<double> x, y, z;
+    x.clear(); y.clear(); z.clear();
+    itA->second->getMeshSkeleton(req.approximate, req.duplicate_distance, x, y, z, res.edge_ends_L, res.edge_ends_R);
+    int maxK = x.size();
+    res.vertices.reserve(maxK);
+    for(int k = 0; k < maxK; k++)
+    {
+        geometry_msgs::Point aux;
+        aux.x = x[k];
+        aux.y = y[k];
+        aux.z = z[k];
+        res.vertices.push_back(aux);
+    }
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
   ros::init(argc, argv, "meshproc_csg");
@@ -414,6 +445,7 @@ int main(int argc, char *argv[])
   ros::ServiceServer GetNearMeshVertices_service = n.advertiseService("meshproc_csg/GetNearMeshVertices", do_GetNearMeshVertices);
   ros::ServiceServer GetMesh_service = n.advertiseService("meshproc_csg/GetMesh", do_GetMesh);
   ros::ServiceServer ConvexDecomposition_service = n.advertiseService("meshproc_csg/ConvexDecomposition", do_ConvexDecomposition);
+  ros::ServiceServer GetMeshSkeleton_service = n.advertiseService("meshproc_csg/GetMeshSkeleton", do_GetMeshSkeleton);
   ROS_INFO(" ... all done.");
 
   ros::spin();

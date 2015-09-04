@@ -28,8 +28,8 @@ public:
     ~MeshEntry();
 
     void clear(void);
-    bool loadFromFile(std::string const& filename, double duplicate_sq_dist);
-    bool loadFromMsg(shape_msgs::Mesh const& message, double duplicate_sq_dist);
+    bool loadFromFile(std::string const& filename, double duplicate_dist);
+    bool loadFromMsg(shape_msgs::Mesh const& message, double duplicate_dist);
 
     bool setFromUnion(MeshEntry const& A, MeshEntry const& B);
     bool setFromIntersection(MeshEntry const& A, MeshEntry const& B);
@@ -40,6 +40,9 @@ public:
     bool setFromSelectComponent(MeshEntry const& A, meshproc_csg::Point const& P);
 
     bool getConvexComponents(std::vector<MeshEntry*> &components) const;
+
+    bool getMeshSkeleton(bool approximate, double duplicate_distance, std::vector<double> &x, std::vector<double> &y,
+                         std::vector<double> &z, std::vector<int> &e_L, std::vector<int> &e_R) const;
 
     bool writeToFile(std::string const& filename);
     bool writeToMsg(shape_msgs::Mesh &message);
@@ -70,14 +73,21 @@ public:
     bool getNearVertices(double x, double y, double z, double distance, std::vector<MeshEntry::XYZTriplet> &points) const;
 
 private:
-    bool loadFromTrimesh(trimesh::TriMesh *M, double duplicate_sq_dist);
-    void remove_duplicates(trimesh::TriMesh *M, double duplicate_dist) const;
+    bool loadFromTrimesh(trimesh::TriMesh *M, double duplicate_dist);
+    static double manhattan_distance(double xA, double yA, double zA,
+                                     double xB, double yB, double zB);
+    static bool write_to_trimesh(Polyhedron const& P, trimesh::TriMesh *M);
+    static void remove_duplicates(trimesh::TriMesh *M, double duplicate_dist);
     void update_properties(void);
     bool update_mesh(void);
     bool triangulate_mesh(void);
     bool process_transforms(void);
 
     void get_bounding_box_limit(double &limit, double coordinate, bool &limitSet, bool lt) const;
+
+    static int init_sets(int maxK, std::vector<std::pair<int, int> > &elements);
+    static int get_set_index(int index, std::vector<std::pair<int, int> > &elements);
+    static int merge_sets(int index_A, int index_B, std::vector<std::pair<int, int> > &elements);
 
     std::vector<MeshEntry *> dependents;
     MeshEntry const* base_mesh;

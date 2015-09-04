@@ -1,0 +1,9 @@
+string mesh_name
+int8 approximate
+float64 duplicate_distance
+---
+int8 mesh_loaded
+geometry_msgs/Point[] vertices
+int32[] edge_ends_L
+int32[] edge_ends_R
+
