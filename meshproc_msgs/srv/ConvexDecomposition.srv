@@ -1,0 +1,13 @@
+string mesh_A
+string mesh_R
+int8 result_to_file
+int8 return_result
+string result_filename
+string result_filename_extension
+---
+int8 mesh_loaded
+int8[] file_written
+int32 nr_components
+string[] mesh_names
+string[] file_names
+shape_msgs/Mesh[] components
