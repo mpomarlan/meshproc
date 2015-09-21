@@ -21,6 +21,7 @@
   <!--<run_depend>meshproc_msgs</run_depend>-->
   <run_depend>trimesh</run_depend>
   <run_depend>meshproc_csg</run_depend>
+  <run_depend>meshproc_2dg</run_depend>
   <!--<run_depend>meshproc_p2m</run_depend>-->
 
   <export>

@@ -26,6 +26,7 @@ set(SRV_FILES
   GetMeshSkeleton.srv
   GetNearMeshVertices.srv
   LoadMesh.srv
+  PolygonConvexDecomposition.srv
   ProjectMesh.srv
   SolidifyMesh.srv
   UnloadMesh.srv
