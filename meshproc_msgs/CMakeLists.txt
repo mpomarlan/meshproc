@@ -17,15 +17,18 @@ set(MSG_FILES
 set(SRV_FILES
   AffineTransformMesh.srv
   ConvexDecomposition.srv
+  ConvexHull.srv
+  CSGRequest.srv
+  GetLoadedMeshNames.srv
   GetMesh.srv
   GetMeshAABB.srv
+  GetMeshProps.srv
   GetMeshSkeleton.srv
   GetNearMeshVertices.srv
   LoadMesh.srv
-  CSGRequest.srv
+  ProjectMesh.srv
+  SolidifyMesh.srv
   UnloadMesh.srv
-  GetMeshProps.srv
-  GetLoadedMeshNames.srv
 )
 
 set(ACT_FILES

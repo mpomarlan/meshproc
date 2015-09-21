@@ -14,6 +14,13 @@
 #include <CGAL/triangulate_polyhedron.h>
 #include <CGAL/bounding_box.h>
 #include <CGAL/convex_decomposition_3.h>
+#include <CGAL/Bounded_kernel.h>
+#include <CGAL/Nef_polyhedron_2.h>
+#include <CGAL/convex_hull_3.h>
+#include <CGAL/Polygon_with_holes_2.h>
+#include <CGAL/Boolean_set_operations_2.h>
+#include <CGAL/Constrained_Delaunay_triangulation_2.h>
+#include <CGAL/Triangulation_face_base_with_info_2.h>
 
 #include <trimesh/TriMesh.h>
 #include <trimesh/TriMesh_algo.h>
@@ -25,13 +32,92 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
-#include <meshproc_csg/csg.h>
+#include <meshproc_csg/typedefs.h>
+
+namespace meshproc_csg{
+struct FaceInfo2
+{
+  FaceInfo2(){}
+  int nesting_level;
+  bool in_domain(){
+    return (nesting_level%2 == 1) || (!nesting_level);
+  }
+};
+
+typedef CGAL::Triangulation_vertex_base_2<Kernel>                      Vb;
+typedef CGAL::Triangulation_face_base_with_info_2<FaceInfo2,Kernel>    Fbb;
+typedef CGAL::Constrained_triangulation_face_base_2<Kernel,Fbb>        Fb;
+typedef CGAL::Triangulation_data_structure_2<Vb,Fb>                    TDS;
+typedef CGAL::Exact_predicates_tag                                     Itag;
+typedef CGAL::Constrained_Delaunay_triangulation_2<Kernel, TDS, Itag>  CDT;
+}
 
 #include <meshproc_csg/build_mesh.h>
 #include <meshproc_csg/triangulate.h>
 
+#include <meshproc_csg/csg.h>
+
 namespace meshproc_csg
 {
+
+typedef CGAL::Polygon_with_holes_2<Kernel> Polygon_with_holes;
+typedef CGAL::Polygon_2<Kernel> Polygon;
+
+/******************************************************************************************/
+/*** The code here is taken from the CGAL example Triangulation_2/polygon_triangulation ***/
+/******************************************************************************************/
+
+void mark_domains(CDT& ct,
+             CDT::Face_handle start,
+             int index,
+             std::list<CDT::Edge>& border )
+{
+  if(start->info().nesting_level != -1){
+    return;
+  }
+  std::list<CDT::Face_handle> queue;
+  queue.push_back(start);
+  while(! queue.empty()){
+    CDT::Face_handle fh = queue.front();
+    queue.pop_front();
+    if(fh->info().nesting_level == -1){
+      fh->info().nesting_level = index;
+      for(int i = 0; i < 3; i++){
+        CDT::Edge e(fh,i);
+        CDT::Face_handle n = fh->neighbor(i);
+        if(n->info().nesting_level == -1){
+          if(ct.is_constrained(e)) border.push_back(e);
+          else queue.push_back(n);
+        }
+      }
+    }
+  }
+}
+//explore set of facets connected with non constrained edges,
+//and attribute to each such set a nesting level.
+//We start from facets incident to the infinite vertex, with a nesting
+//level of 0. Then we recursively consider the non-explored facets incident
+//to constrained edges bounding the former set and increase the nesting level by 1.
+//Facets in the domain are those with an odd nesting level.
+void mark_domains(CDT& cdt)
+{
+  for(CDT::All_faces_iterator it = cdt.all_faces_begin(); it != cdt.all_faces_end(); ++it){
+    it->info().nesting_level = -1;
+  }
+  std::list<CDT::Edge> border;
+  mark_domains(cdt, cdt.infinite_face(), 0, border);
+  while(! border.empty()){
+    CDT::Edge e = border.front();
+    border.pop_front();
+    CDT::Face_handle n = e.first->neighbor(e.second);
+    if(n->info().nesting_level == -1){
+      mark_domains(cdt, n, e.first->info().nesting_level+1, border);
+    }
+  }
+}
+/******************************************************************************************/
+/** The code above was taken from the CGAL example Triangulation_2/polygon_triangulation **/
+/******************************************************************************************/
 
 double duplicate_threshold = 0.00001; /*Square of a distance. If vertices are closer than this, they are
                                         treated as the same vertex by remove_duplicates.*/
@@ -73,27 +159,18 @@ MeshEntry::MeshEntry()
 {
     props_updated = false;
     triangulated = false;
-    transform_empty = true;
-    base_mesh = this;
-    transform = Eigen::Affine3d();
-    dependents.clear();
 }
 
 MeshEntry::~MeshEntry()
 {
-    process_transforms();
 }
 
 void MeshEntry::clear(void)
 {
-    process_transforms();
     props_updated = false;
     triangulated = false;
     mesh_data.clear();
-    transform_empty = true;
-    base_mesh = this;
     nef_polyhedron.clear();
-    dependents.clear();
 }
 bool MeshEntry::loadFromFile(std::string const& filename, double duplicate_dist)
 {
@@ -106,8 +183,7 @@ bool MeshEntry::loadFromFile(std::string const& filename, double duplicate_dist)
     if(!fileAccessible)
         return false;
     M = trimesh::TriMesh::read(filename.c_str());
-    loadFromTrimesh(M, duplicate_dist);
-    return true;
+    return loadFromTrimesh(M, duplicate_dist);
 }
 bool MeshEntry::loadFromMsg(shape_msgs::Mesh const& message, double duplicate_dist)
 {
@@ -124,60 +200,40 @@ bool MeshEntry::loadFromMsg(shape_msgs::Mesh const& message, double duplicate_di
         M.faces.push_back(trimesh::TriMesh::Face(message.triangles[k].vertex_indices[0],
                                                  message.triangles[k].vertex_indices[1],
                                                  message.triangles[k].vertex_indices[2]));
-    loadFromTrimesh(&M, duplicate_dist);
+    return loadFromTrimesh(&M, duplicate_dist);
 }
 bool MeshEntry::loadFromTrimesh(trimesh::TriMesh *M, double duplicate_dist)
 {
+    clear();
     MeshEntry::remove_duplicates(M, duplicate_dist);
     Build_mesh<Polyhedron::HalfedgeDS> build_mesh(M);
     mesh_data.delegate(build_mesh);
     nef_polyhedron = Nef_polyhedron(mesh_data);
-}
-
-bool MeshEntry::transformDependents(void)
-{
-    int maxK = dependents.size();
-    for(int k = 0; k < maxK; k++)
-        dependents[k]->transformMesh();
-    dependents.clear();
-    return true;
-}
-
-bool MeshEntry::process_transforms(void)
-{
-    transformDependents();
-    base_mesh = this;
-    transform_empty = true;
     return true;
 }
 
 bool MeshEntry::setFromUnion(MeshEntry const& A, MeshEntry const& B)
 {
-    process_transforms();
     nef_polyhedron = A.nef_polyhedron + B.nef_polyhedron;
     return update_mesh();
 }
 bool MeshEntry::setFromIntersection(MeshEntry const& A, MeshEntry const& B)
 {
-    process_transforms();
     nef_polyhedron = A.nef_polyhedron * B.nef_polyhedron;
     return update_mesh();
 }
 bool MeshEntry::setFromDifference(MeshEntry const& A, MeshEntry const& B)
 {
-    process_transforms();
     nef_polyhedron = A.nef_polyhedron - B.nef_polyhedron;
     return update_mesh();
 }
 bool MeshEntry::setFromSymmetricDifference(MeshEntry const& A, MeshEntry const& B)
 {
-    process_transforms();
     nef_polyhedron = A.nef_polyhedron ^ B.nef_polyhedron;
     return update_mesh();
 }
 bool MeshEntry::setFromMinkowskiSum(MeshEntry const& A, MeshEntry const& B)
 {
-    process_transforms();
     Nef_polyhedron cA = A.nef_polyhedron;
     Nef_polyhedron cB = B.nef_polyhedron;
     std::cout << "Copied nefs ..." << std::endl;
@@ -186,7 +242,6 @@ bool MeshEntry::setFromMinkowskiSum(MeshEntry const& A, MeshEntry const& B)
 }
 bool MeshEntry::setFromMinkowskiErosion(MeshEntry const& A, MeshEntry const& B)
 {
-    process_transforms();
     Polyhedron bbox = A.getBoundingBox(2);
     Nef_polyhedron nefRA(bbox);
     Nef_polyhedron cB = B.nef_polyhedron;
@@ -197,7 +252,209 @@ bool MeshEntry::setFromMinkowskiErosion(MeshEntry const& A, MeshEntry const& B)
 }
 bool MeshEntry::setFromSelectComponent(MeshEntry const& A, meshproc_csg::Point const& P)
 {
-    process_transforms();
+    return true;
+}
+bool MeshEntry::setFromConvexHull(MeshEntry & A)
+{
+    typedef Polyhedron::Point_const_iterator Point_const_iterator;
+    //typedef typename std::iterator_traits<Point_const_iterator>::value_type Point_3;
+    typedef typename CGAL::internal::Convex_hull_3::Default_traits_for_Chull_3<Point>::type Traits;
+    Traits traits;
+    typename Traits::Collinear_3 collinear = traits.collinear_3_object();
+    Polyhedron P;
+    bool notAllCollinear = false;
+    if(2 < A.mesh_data.size_of_vertices())
+    {
+        Point_const_iterator p1, p2, p3;
+        p1 = A.mesh_data.points_begin();
+        p2 = p1; p2++;
+        p3 = p2; p3++;
+        for(; (p3 != A.mesh_data.points_end()) && (!notAllCollinear); p3++)
+        {
+            notAllCollinear = !collinear(*p1, *p2, *p3);
+        }
+    }
+    if((3 < A.mesh_data.size_of_vertices()) && (notAllCollinear))
+    {
+        CGAL::convex_hull_3(A.mesh_data.points_begin(), A.mesh_data.points_end(), P);
+        nef_polyhedron = Nef_polyhedron(P);
+    }
+    else
+        nef_polyhedron = Nef_polyhedron(A.mesh_data);
+    nef_polyhedron = nef_polyhedron.regularization();
+    //std::string refName(dummyObject.type().name); // "N4CGAL12Polyhedron_3INS_5EpeckENS_18Polyhedron_items_3ENS_18HalfedgeDS_defaultESaIiEEE"
+    return update_mesh();
+}
+
+bool MeshEntry::getBoundaryPolygon(std::vector<double> &x, std::vector<double> &y, std::vector<double> &z,
+                        std::vector<int> &edge_L, std::vector<int> &edge_R)
+{
+    mesh_data.normalize_border();
+    typedef Polyhedron::Edge_const_iterator Edge_const_iterator;
+    typedef Polyhedron::Vertex_const_handle Vertex_const_handle;
+    typedef std::map<Vertex_const_handle, int> Vertex_const_handle_map;
+    Edge_const_iterator it = mesh_data.border_edges_begin();
+    Vertex_const_handle_map knownVertices;
+    int maxK = mesh_data.size_of_border_edges();
+    knownVertices.clear();
+    x.clear(); x.resize(maxK);
+    y.clear(); y.resize(maxK);
+    z.clear(); z.resize(maxK);
+    edge_L.clear(); edge_L.reserve(maxK);
+    edge_R.clear(); edge_R.reserve(maxK);
+    for(; it != mesh_data.edges_end(); it++)
+    {
+        Vertex_const_handle v1, v2;
+        std::pair<Vertex_const_handle_map::iterator, bool> insOp;
+        double x1, y1, z1;
+        double x2, y2, z2;
+        v1 = it->vertex();
+        v2 = it->opposite()->vertex();
+        int k1, k2;
+        insOp = knownVertices.insert(std::pair<Vertex_const_handle, int>(v1, knownVertices.size()));
+        k1 = insOp.first->second;
+        insOp = knownVertices.insert(std::pair<Vertex_const_handle, int>(v2, knownVertices.size()));
+        k2 = insOp.first->second;
+        x1 = ::CGAL::to_double(v1->point().x());
+        x2 = ::CGAL::to_double(v2->point().x());
+        y1 = ::CGAL::to_double(v1->point().y());
+        y2 = ::CGAL::to_double(v2->point().y());
+        z1 = ::CGAL::to_double(v1->point().z());
+        z2 = ::CGAL::to_double(v2->point().z());
+        x[k1] = x1; x[k2] = x2;
+        y[k1] = y1; y[k2] = y2;
+        z[k1] = z1; z[k2] = z2;
+        edge_L.push_back(k1);
+        edge_R.push_back(k2);
+    }
+    return true;
+}
+
+bool MeshEntry::setFromProjection(MeshEntry const& A, double nx, double ny, double nz, bool fillHoles)
+{
+    double n = std::sqrt(nx*nx + ny*ny + nz*nz);
+    if(0.000001 > n)
+    {
+        return false;
+    }
+    nx /= n;
+    ny /= n;
+    nz /= n;
+    double ns = std::sqrt(nx*nx + ny*ny);
+    Eigen::Affine3d afftran;
+    afftran(0,0) = 1.0; afftran(0,1) = 0.0; afftran(0,2) = 0.0; afftran(0,3) = 0.0;
+    afftran(1,0) = 0.0; afftran(1,1) = 1.0; afftran(1,2) = 0.0; afftran(1,3) = 0.0;
+    afftran(2,0) = 0.0; afftran(2,1) = 0.0; afftran(2,2) = 1.0; afftran(2,3) = 0.0;
+    if(0.000001 < ns)
+    {
+        double nxa = nx/ns;
+        double nya = ny/ns;
+        afftran(0,0) =  nya; afftran(0,1) =          nz*nxa; afftran(0,2) = nx; afftran(0,3) = 0.0;
+        afftran(1,0) = -nxa; afftran(1,1) =          nz*nya; afftran(1,2) = ny; afftran(1,3) = 0.0;
+        afftran(2,0) =  0.0; afftran(2,1) = -nx*nxa -ny*nya; afftran(2,2) = nz; afftran(2,3) = 0.0;
+    }
+
+    Polygon_with_holes P;
+    bool inited = false;
+
+    for(Polyhedron::Facet_const_iterator it = A.mesh_data.facets_begin(); it != A.mesh_data.facets_end(); it++)
+    {
+        Polygon Pit;
+        Polygon_with_holes Pith;
+        Polyhedron::Halfedge_around_facet_const_circulator hc_end = it->facet_begin();
+        Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end;
+        double n = 0;
+        bool h1 = false, h2 = false, h3 = false;
+        double x1, x2, x3, y1, y2, y3;
+        do
+        {
+            double x, y, z, xP, yP;
+            x = ::CGAL::to_double(hc_a->vertex()->point().x());
+            y = ::CGAL::to_double(hc_a->vertex()->point().y());
+            z = ::CGAL::to_double(hc_a->vertex()->point().z());
+            xP = afftran(0,0)*x + afftran(1,0)*y + afftran(2,0)*z;
+            yP = afftran(0,1)*x + afftran(1,1)*y + afftran(2,1)*z;
+            Pit.push_back(Point_2(xP, yP));
+            if(!h1)
+            {
+                x1 = xP;
+                y1 = yP;
+                h1 = true;
+            }
+            else if(!h2)
+            {
+                x2 = xP;
+                y2 = yP;
+                h2 = true;
+            }
+            else if(!h3)
+            {
+                x3 = xP;
+                y3 = yP;
+                h3 = true;
+            }
+            hc_a++;
+        }while(hc_a != hc_end);
+        n = (y2 - y1)*(x3 - x2) - (x2 - x1)*(y3 - y2);
+        if(0.0 < n)
+        {
+            Pit.reverse_orientation();
+        }
+        if(!inited)
+        {
+            inited = true;
+            CGAL::join(Pit, Pit, P);
+        }
+        else
+        {
+            /*A bit of black magic, seems like Bool Ops are a bit more reliable on Polygs with
+            holes. Therefore, init a Polygon with holes from the projection of a triangle and
+            join it with the previously accumulated projection.*/
+            CGAL::join(Pit, Pit, Pith);
+            CGAL::join(Pith, P, P);
+        }
+    }
+
+    Polygon oB = P.outer_boundary();
+    CDT cdt;
+    cdt.insert_constraint(oB.vertices_begin(), oB.vertices_end(), true);
+    for(Polygon_with_holes::Hole_const_iterator it = P.holes_begin();
+        it != P.holes_end(); it++)
+        cdt.insert_constraint(it->vertices_begin(), it->vertices_end(), true);
+    mark_domains(cdt);
+
+    Build_from_triangulation<Polyhedron::HalfedgeDS> triangulationBuilder(cdt, afftran, fillHoles);
+    FaceInfo2 fi;
+    fi.in_domain();
+    mesh_data.clear();
+    mesh_data.delegate(triangulationBuilder);
+    //Warning: this is a "thin" (non-solid) mesh, on conversion from Nef to Poly the result is empty.
+    //Mesh should be stabilized by the user with a call to solidify.
+    nef_polyhedron = Nef_polyhedron(mesh_data);
+    props_updated = false;
+    triangulated = false;
+
+    return true;
+}
+
+bool MeshEntry::setFromSolidification(MeshEntry const& A, double thickness)
+{
+    if(&A != this)
+    {
+        mesh_data.clear();
+        Build_solidification<Polyhedron::HDS> solidifier(A.mesh_data, thickness);
+        mesh_data.delegate(solidifier);
+    }
+    else
+    {
+        Polyhedron copy(mesh_data);
+        mesh_data.clear();
+        Build_solidification<Polyhedron::HDS> solidifier(copy, thickness);
+        mesh_data.delegate(solidifier);
+    }
+    props_updated = false;
+    triangulated = false;
+    nef_polyhedron = Nef_polyhedron(mesh_data);
     return true;
 }
 
@@ -213,14 +470,26 @@ bool MeshEntry::getConvexComponents(std::vector<MeshEntry*> &components) const
         it != cN.volumes_end(); it++)
         if(it->mark() && it->is_valid())
         {
-            Polyhedron P;
-            P.clear();
+            //CGAL::SNC_in_place_list_volume<CGAL::SNC_indexed_items::Volume<CGAL::SNC_structure<CGAL::Epeck, CGAL::SNC_indexed_items, bool> > > v;
+            //v.is_valid();
+            Polyhedron P, P2;
+            P.clear(); P2.clear();
             cN.convert_inner_shell_to_polyhedron(it->shells_begin(), P);
-            if((!P.is_empty()) && P.is_valid() && P.is_closed() && (3 < P.size_of_vertices()))
+            Nef_polyhedron N(P);
+            N = N.interior();
+            N.convert_to_polyhedron(P2);
+            //trimesh::TriMesh M;
+            //MeshEntry::write_to_trimesh(P, &M);
+            //MeshEntry::remove_duplicates(&M, 0.00001);
+            //Build_mesh<Polyhedron::HalfedgeDS> build_mesh(&M);
+            //if(M.faces.size())
+            //    P2.delegate(build_mesh);
+            if((!P2.is_empty()) && P2.is_valid() && P2.is_closed() && (3 < P2.size_of_vertices()))
             {
+                std::cerr << k << std::endl;
                 components.push_back(new MeshEntry());
-                components[bk+k]->mesh_data = P;
-                components[bk+k]->nef_polyhedron = Nef_polyhedron(P);
+                components[bk+k]->mesh_data = P2;
+                components[bk+k]->nef_polyhedron = Nef_polyhedron(P2);
                 k++;
             }
         }
@@ -271,7 +540,6 @@ bool MeshEntry::write_to_trimesh(Polyhedron const& P, trimesh::TriMesh *M)
 
 bool MeshEntry::writeToFile(std::string const& filename)
 {
-    transformMesh();
     triangulate_mesh();
     trimesh::TriMesh M;
     MeshEntry::write_to_trimesh(mesh_data, &M);
@@ -281,7 +549,6 @@ bool MeshEntry::writeToFile(std::string const& filename)
 
 bool MeshEntry::writeToMsg(shape_msgs::Mesh &message)
 {
-    transformMesh();
     triangulate_mesh();
     message.vertices.clear(); message.vertices.reserve(mesh_data.size_of_vertices());
     message.triangles.clear(); message.triangles.reserve(mesh_data.size_of_facets());
@@ -427,7 +694,6 @@ void MeshEntry::remove_duplicates(trimesh::TriMesh *M, double duplicate_dist)
 }
 void MeshEntry::update_properties(void)
 {
-    transformMesh();
     if(!props_updated)
     {
         props_updated = true;
@@ -459,6 +725,10 @@ bool MeshEntry::triangulate_mesh(void)
 
 bool MeshEntry::update_mesh(void)
 {
+    if(!nef_polyhedron.is_simple())
+    {
+        nef_polyhedron = nef_polyhedron.regularization();
+    }
     if(nef_polyhedron.is_simple())
     {
         nef_polyhedron.convert_to_Polyhedron(mesh_data);
@@ -473,17 +743,14 @@ bool MeshEntry::update_mesh(void)
     }
 }
 
-bool MeshEntry::applyTransform(Eigen::Affine3d const& M, MeshEntry *baseMesh, bool incremental)
+bool MeshEntry::applyTransform(Eigen::Affine3d const& M)
 {
-    if(baseMesh != this)
-        baseMesh->transformMesh();
-    if(transform_empty || (base_mesh != baseMesh) || (!incremental))
-        transform = M;
-    else
-        transform = M*transform;
-    base_mesh = baseMesh;
-    transform_empty = false;
-    return true;
+    Nef_polyhedron::Aff_transformation_3 afftran(M(0,0), M(0,1), M(0,2), M(0,3),
+                                                 M(1,0), M(1,1), M(1,2), M(1,3),
+                                                 M(2,0), M(2,1), M(2,2), M(2,3));
+    nef_polyhedron.transform(afftran);
+
+    return update_mesh();
 }
 
 void MeshEntry::get_bounding_box_limit(double &limit, double coordinate, bool &limitSet, bool lt) const
@@ -528,39 +795,6 @@ void MeshEntry::getBoundingBox(double &maxX, double &minX, double &maxY, double 
     minY *= scale;
     maxZ *= scale;
     minZ *= scale;
-}
-
-
-bool MeshEntry::transformMesh(void)
-{
-    transformDependents();
-    if(!transform_empty)
-    {
-        if(base_mesh != this)
-            nef_polyhedron = base_mesh->nef_polyhedron;
-        Nef_polyhedron::Aff_transformation_3 afftran(transform(0,0), transform(0,1), transform(0,2), transform(0,3),
-                                                     transform(1,0), transform(1,1), transform(1,2), transform(1,3),
-                                                     transform(2,0), transform(2,1), transform(2,2), transform(2,3));
-        nef_polyhedron.transform(afftran);
-        transform_empty = update_mesh();
-        if(transform_empty)
-            base_mesh = this;
-    }
-    return transform_empty;
-}
-
-bool MeshEntry::addDependent(MeshEntry * meshEntry)
-{
-    dependents.push_back(meshEntry);
-    return true;
-}
-
-bool MeshEntry::getDependents(std::vector<MeshEntry *> & meshes) const
-{
-    int maxK = dependents.size();
-    for(int k = 0; k < maxK; k++)
-        meshes.push_back(dependents[k]);
-    return true;
 }
 
 bool MeshEntry::getNearVertices(double x, double y, double z, double distance, std::vector<MeshEntry::XYZTriplet> &points) const

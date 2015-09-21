@@ -1,6 +1,5 @@
 string mesh_A
 string mesh_R
-geometry_msgs/Transform transform
 int8 return_result
 int8 result_to_file
 string result_filename

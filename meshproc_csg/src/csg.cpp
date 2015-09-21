@@ -5,13 +5,6 @@
 #include <vector>
 #include <cstdio>
 
-#include <CGAL/Exact_predicates_exact_constructions_kernel.h>
-#include <CGAL/Homogeneous.h>
-#include <CGAL/Polyhedron_3.h>
-#include <CGAL/IO/Polyhedron_iostream.h>
-#include <CGAL/Nef_polyhedron_3.h>
-#include <CGAL/IO/Nef_polyhedron_iostream_3.h>
-
 #include <trimesh/TriMesh.h>
 #include <trimesh/TriMesh_algo.h>
 
@@ -28,12 +21,24 @@
 #include <meshproc_msgs/GetMesh.h>
 #include <meshproc_msgs/ConvexDecomposition.h>
 #include <meshproc_msgs/GetMeshSkeleton.h>
+#include <meshproc_msgs/ConvexHull.h>
+#include <meshproc_msgs/ProjectMesh.h>
+#include <meshproc_msgs/SolidifyMesh.h>
 
 #include <meshproc_csg/kdtree++/kdtree.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 #include <eigen_conversions/eigen_msg.h>
+
+#include <CGAL/Exact_predicates_exact_constructions_kernel.h>
+#include <CGAL/Homogeneous.h>
+#include <CGAL/Polyhedron_3.h>
+#include <CGAL/Nef_polyhedron_3.h>
+#include <CGAL/Bounded_kernel.h>
+#include <CGAL/Nef_polyhedron_2.h>
+
+#include <meshproc_csg/typedefs.h>
 
 #include <meshproc_csg/csg.h>
 
@@ -91,7 +96,6 @@ bool do_UnloadMesh(meshproc_msgs::UnloadMesh::Request &req, meshproc_msgs::Unloa
     MeshMap::iterator it = loadedMeshes.find(req.mesh_name);
     if(loadedMeshes.end() != it)
     {
-        it->second->transformDependents();
         delete it->second;
         res.unloaded_mesh = 1;
         loadedMeshes.erase(it);
@@ -116,7 +120,6 @@ bool do_GetMeshProps(meshproc_msgs::GetMeshProps::Request &req, meshproc_msgs::G
     MeshMap::iterator it = loadedMeshes.find(req.mesh_name);
     if(it != loadedMeshes.end())
     {
-        it->second->transformMesh();
         res.is_loaded = true;
         res.is_closed = it->second->isClosed();
         res.is_manifold = it->second->isManifold();
@@ -144,7 +147,6 @@ MeshEntry* checkMeshAvailability(std::string const& meshName,
     if(it != loadedMeshes.end())
     {
         isLoaded = true;
-        it->second->transformMesh();
         isCSGSafe = it->second->isCSGSafe();
         return it->second;
     }
@@ -266,9 +268,7 @@ bool do_AffineTransformMesh(meshproc_msgs::AffineTransformMesh::Request &req,
                                            req.transform.rotation.x,
                                            req.transform.rotation.y,
                                            req.transform.rotation.z);
-    R->applyTransform(M, A, req.incremental);
-    if(A != R)
-        A->addDependent(R);
+    R->applyTransform(M);
     if(req.return_result)
         R->writeToMsg(res.result);
     else
@@ -429,6 +429,136 @@ bool do_GetMeshSkeleton(meshproc_msgs::GetMeshSkeleton::Request &req,
     return true;
 }
 
+bool do_ConvexHull(meshproc_msgs::ConvexHull::Request &req,
+                   meshproc_msgs::ConvexHull::Response &res)
+{
+    MeshMap::iterator itA = loadedMeshes.find(req.mesh_A);
+    res.mesh_A_loaded = true;
+    res.file_written = false;
+    res.result = shape_msgs::Mesh();
+    if(itA == loadedMeshes.end())
+    {
+        res.mesh_A_loaded = false;
+        return true;
+    }
+
+    MeshMap::iterator itR = loadedMeshes.find(req.mesh_R);
+    if(itR == loadedMeshes.end())
+    {
+        itR = loadedMeshes.insert(loadedMeshes.begin(),
+                                 std::pair<std::string, MeshEntry*>(req.mesh_R, new MeshEntry()));
+    }
+    MeshEntry *A, *R;
+    A = itA->second;
+    R = itR->second;
+    R->setFromConvexHull(*A);
+    if(req.return_result)
+        R->writeToMsg(res.result);
+    else
+        res.result = shape_msgs::Mesh();
+    if(req.result_to_file)
+    {
+        res.file_written = R->writeToFile(req.result_filename);
+    }
+    return true;
+}
+
+bool do_ProjectMesh(meshproc_msgs::ProjectMesh::Request &req,
+                    meshproc_msgs::ProjectMesh::Response &res)
+{
+    bool already_had_R = true;
+    MeshMap::iterator itA = loadedMeshes.find(req.mesh_A);
+    res.mesh_A_loaded = true;
+    res.operation_performed = false;
+    res.file_written = false;
+    res.result = shape_msgs::Mesh();
+    if(itA == loadedMeshes.end())
+    {
+        res.mesh_A_loaded = false;
+        return true;
+    }
+
+    MeshMap::iterator itR = loadedMeshes.find(req.mesh_R);
+    if(itR == loadedMeshes.end())
+    {
+        already_had_R = false;
+        itR = loadedMeshes.insert(loadedMeshes.begin(),
+                                 std::pair<std::string, MeshEntry*>(req.mesh_R, new MeshEntry()));
+    }
+    MeshEntry *A, *R;
+    A = itA->second;
+    R = itR->second;
+    res.operation_performed = R->setFromProjection(*A, req.normal.x, req.normal.y, req.normal.z, req.fill_holes);
+    if(!res.operation_performed)
+    {
+        if(!already_had_R)
+        {
+            delete R;
+            loadedMeshes.erase(req.mesh_R);
+        }
+        return true;
+    }
+    if(req.return_result_as_mesh)
+        R->writeToMsg(res.result);
+    else
+        res.result = shape_msgs::Mesh();
+    if(req.return_result_as_polygon)
+    {
+        std::vector<double> x, y, z;
+        R->getBoundaryPolygon(x, y, z, res.edge_L, res.edge_R);
+        int maxK = x.size();
+        for(int k = 0; k < maxK; k++)
+        {
+            geometry_msgs::Point aux;
+            aux.x = x[k];
+            aux.y = y[k];
+            aux.z = z[k];
+            res.points.push_back(aux);
+        }
+    }
+    if(req.result_to_file)
+    {
+        res.file_written = R->writeToFile(req.result_filename);
+    }
+    return true;
+}
+
+bool do_SolidifyMesh(meshproc_msgs::SolidifyMesh::Request &req,
+                    meshproc_msgs::SolidifyMesh::Response &res)
+{
+    bool already_had_R = true;
+    MeshMap::iterator itA = loadedMeshes.find(req.mesh_A);
+    res.mesh_A_loaded = true;
+    res.file_written = false;
+    res.result = shape_msgs::Mesh();
+    if(itA == loadedMeshes.end())
+    {
+        res.mesh_A_loaded = false;
+        return true;
+    }
+
+    MeshMap::iterator itR = loadedMeshes.find(req.mesh_R);
+    if(itR == loadedMeshes.end())
+    {
+        already_had_R = false;
+        itR = loadedMeshes.insert(loadedMeshes.begin(),
+                                 std::pair<std::string, MeshEntry*>(req.mesh_R, new MeshEntry()));
+    }
+    MeshEntry *A, *R;
+    A = itA->second;
+    R = itR->second;
+    R->setFromSolidification(*A, req.thickness);
+    if(req.return_result)
+        R->writeToMsg(res.result);
+    else
+        res.result = shape_msgs::Mesh();
+    if(req.result_to_file)
+    {
+        res.file_written = R->writeToFile(req.result_filename);
+    }
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
   ros::init(argc, argv, "meshproc_csg");
@@ -446,6 +576,9 @@ int main(int argc, char *argv[])
   ros::ServiceServer GetMesh_service = n.advertiseService("meshproc_csg/GetMesh", do_GetMesh);
   ros::ServiceServer ConvexDecomposition_service = n.advertiseService("meshproc_csg/ConvexDecomposition", do_ConvexDecomposition);
   ros::ServiceServer GetMeshSkeleton_service = n.advertiseService("meshproc_csg/GetMeshSkeleton", do_GetMeshSkeleton);
+  ros::ServiceServer ConvexHull_service = n.advertiseService("meshproc_csg/ConvexHull", do_ConvexHull);
+  ros::ServiceServer ProjectMesh_service = n.advertiseService("meshproc_csg/ProjectMesh", do_ProjectMesh);
+  ros::ServiceServer SolidifyMesh_service = n.advertiseService("meshproc_csg/SolidifyMesh", do_SolidifyMesh);
   ROS_INFO(" ... all done.");
 
   ros::spin();
