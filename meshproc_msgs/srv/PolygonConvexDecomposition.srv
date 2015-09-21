@@ -1,0 +1,4 @@
+geometry_msgs/Polygon polygon
+---
+int8 operation_performed
+geometry_msgs/Polygon[] convex_parts

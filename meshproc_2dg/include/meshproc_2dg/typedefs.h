@@ -1,0 +1,20 @@
+#ifndef __MESHPROC_2DG_TYPEDEFS__
+
+#define __MESHPROC_2DG_TYPEDEFS__
+
+namespace meshproc_2dg
+{
+typedef CGAL::Exact_predicates_exact_constructions_kernel Kernel;
+typedef CGAL::Partition_traits_2<Kernel>                  Traits;
+typedef CGAL::Is_convex_2<Traits>                         Is_convex_2;
+typedef Traits::Polygon_2                                 Polygon_2;
+typedef Traits::Point_2                                   Point_2;
+typedef Polygon_2::Vertex_const_iterator                  Vertex_const_iterator;
+typedef std::list<Polygon_2>                              Polygon_list;
+typedef std::vector<Polygon_2>                            Polygon_vector;
+typedef CGAL::Partition_is_valid_traits_2<Traits, Is_convex_2>
+                                                          Validity_traits;
+
+}
+
+#endif

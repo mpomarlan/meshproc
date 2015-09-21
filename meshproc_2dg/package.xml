@@ -1,0 +1,31 @@
+<package>
+  <name>meshproc_2dg</name>
+  <version>0.1.0</version>
+
+  <description>
+    2D geometry operations powered by CGAL.
+    Operations: boolean ops, triangulation, convex decomposition etc.
+    Input formats:
+      - ROS messages: geometry_msgs/Polygon
+    Output formats: same as input.
+    Uses CGAL.
+  </description>
+
+  <author email="blandc@cs.uni-bremen.de">Mihai Pomarlan</author>
+  <maintainer email="blandc@cs.uni-bremen.de">Mihai Pomarlan</maintainer>
+  <license>BSD</license>
+
+  <url type="website">http://open-ease.org</url>
+  <url type="bugtracker">https://github.com/mpomarlan/meshproc/issues</url>
+  <url type="repository">https://github.com/mpomarlan/meshproc</url>
+
+  <buildtool_depend>catkin</buildtool_depend> 
+
+  <build_depend>meshproc_msgs</build_depend>
+  <build_depend>roscpp</build_depend>
+
+ 
+  <run_depend>meshproc_msgs</run_depend>
+  <run_depend>roscpp</run_depend>
+
+</package>
