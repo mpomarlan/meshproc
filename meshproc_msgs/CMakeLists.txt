@@ -16,6 +16,7 @@ set(MSG_FILES
 
 set(SRV_FILES
   AffineTransformMesh.srv
+  Cloud2Mesh.srv
   ConvexDecomposition.srv
   ConvexHull.srv
   CSGRequest.srv
