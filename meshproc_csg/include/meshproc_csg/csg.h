@@ -11,11 +11,29 @@ public:
     typedef struct {double x, y, z;} XYZTriplet;
 
     MeshEntry();
+    MeshEntry(MeshEntry const& orig):
+        name(""),
+        mesh_data(orig.mesh_data),
+        nef_polyhedron(nef_polyhedron),
+        props_updated(orig.props_updated),
+        triangulated(orig.triangulated),
+        is_closed(orig.is_closed),
+        is_manifold(orig.is_manifold),
+        is_orientable(orig.is_orientable),
+        is_csg_safe(orig.is_csg_safe),
+        nr_vertices(orig.nr_vertices),
+        nr_edges(orig.nr_edges),
+        nr_faces(orig.nr_faces),
+        nr_connected_components(orig.nr_connected_components),
+        Euler_characteristic(orig.Euler_characteristic)
+        {}
     ~MeshEntry();
 
     void clear(void);
     bool loadFromFile(std::string const& filename, double duplicate_dist);
     bool loadFromMsg(shape_msgs::Mesh const& message, double duplicate_dist);
+
+    bool setFromMeshEntry(MeshEntry const& A);
 
     bool setFromUnion(MeshEntry const& A, MeshEntry const& B);
     bool setFromIntersection(MeshEntry const& A, MeshEntry const& B);

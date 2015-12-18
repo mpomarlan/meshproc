@@ -260,7 +260,7 @@ bool do_AffineTransformMesh(meshproc_msgs::AffineTransformMesh::Request &req,
                                  std::pair<std::string, MeshEntry*>(req.mesh_R, new MeshEntry()));
     }
     A = itA->second;
-    R = itR->second;
+    R = itR->second; R->setFromMeshEntry(*A);
     Eigen::Affine3d M = Eigen::Translation3d(req.transform.translation.x,
                                              req.transform.translation.y,
                                              req.transform.translation.z)*

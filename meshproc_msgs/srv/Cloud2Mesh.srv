@@ -1,0 +1,7 @@
+string input_filename
+float32 cell_size
+string output_filename
+---
+int8 input_found
+int8 operation_done
+

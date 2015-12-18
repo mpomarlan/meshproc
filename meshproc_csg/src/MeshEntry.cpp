@@ -212,6 +212,25 @@ bool MeshEntry::loadFromTrimesh(trimesh::TriMesh *M, double duplicate_dist)
     return true;
 }
 
+bool MeshEntry::setFromMeshEntry(MeshEntry const& A)
+{
+    name = "";
+    mesh_data = A.mesh_data;
+    nef_polyhedron = A.nef_polyhedron;
+    props_updated = A.props_updated;
+    triangulated = A.triangulated;
+    is_closed = A.is_closed;
+    is_manifold = A.is_manifold;
+    is_orientable = A.is_orientable;
+    is_csg_safe = A.is_csg_safe;
+    nr_vertices = A.nr_vertices;
+    nr_edges = A.nr_edges;
+    nr_faces = A.nr_faces;
+    nr_connected_components = A.nr_connected_components;
+    Euler_characteristic = A.Euler_characteristic;
+    return true;
+}
+
 bool MeshEntry::setFromUnion(MeshEntry const& A, MeshEntry const& B)
 {
     nef_polyhedron = A.nef_polyhedron + B.nef_polyhedron;
