@@ -1,0 +1,14 @@
+#Enum for selecting operations
+int8 UNION=0
+int8 INTERSECTION=1
+int8 DIFFERENCE=2
+int8 SYMMETRIC_DIFFERENCE=3
+int8 MINKOWSKI_SUM=4
+int8 MINKOWSKI_EROSION=5
+
+int8 operation
+meshproc_msgs/PolygonWithHoles polygon_A
+meshproc_msgs/PolygonWithHoles polygon_B
+---
+int8 operation_performed
+meshproc_msgs/PolygonWithHoles[] polygons_R

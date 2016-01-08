@@ -1,4 +1,14 @@
-geometry_msgs/Polygon polygon
+meshproc_msgs/PolygonWithHoles polygon
+
+#Settings for flags and resulting selected method
+#(ignore_holes, triangulate) = method:
+#(0, 0) = vertical decomposition
+#(0, 1) = [Delaunay] triangulation
+#(1, 0) = Greene optimal convex decomposition
+#(1, 1) = [Delaunay] triangulation
+int8 ignore_holes
+int8 triangulate
+
 ---
 int8 operation_performed
 geometry_msgs/Polygon[] convex_parts

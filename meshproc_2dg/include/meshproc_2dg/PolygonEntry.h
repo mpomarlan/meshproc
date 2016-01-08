@@ -8,18 +8,24 @@ class PolygonEntry
 {
 public:
     PolygonEntry(){}
-    PolygonEntry(Polygon_2 const& data):polygon(data){}
+    PolygonEntry(Polygon_with_holes_2 const& data):polygon(data){}
     ~PolygonEntry(){}
 
-    bool loadFromMsg(geometry_msgs::Polygon const& msg);
-    bool writeToMsg(geometry_msgs::Polygon & msg) const;
-    bool convexDecomposition(std::vector<Polygon_2> & results) const;
+    bool loadFromMsg(meshproc_msgs::PolygonWithHoles const& msg);
+    bool writeToMsg(meshproc_msgs::PolygonWithHoles & msg) const;
+    bool convexDecomposition(std::vector<Polygon_2> & results, bool ignoreHoles, bool triangulate) const;
 
     static bool loadFromMsg(const geometry_msgs::Polygon &msg, Polygon_2 & polygon);
+    static bool loadFromMsg(const meshproc_msgs::PolygonWithHoles &msg, Polygon_with_holes_2 & polygon);
     static bool writeToMsg(geometry_msgs::Polygon &msg, Polygon_2 const& polygon);
-    static bool convexDecomposition(std::vector<Polygon_2> & results, Polygon_2 const& polygon);
+    static bool writeToMsg(meshproc_msgs::PolygonWithHoles &msg, Polygon_with_holes_2 const& polygon);
+    static bool convexDecomposition(std::vector<Polygon_2> & results, Polygon_with_holes_2 const& polygon, bool ignoreHoles, bool triangulate);
+    static bool csgRequest(Polygon_with_holes_2 const& polygon_A, Polygon_with_holes_2 const& polygon_B, std::list<Polygon_with_holes_2> & result, int operation);
+    static bool visibility(Polygon_with_holes_2 const& polygon, std::vector<Point_2> const& points, std::vector<Polygon_2> & results);
 private:
-    Polygon_2 polygon;
+    static Polygon_2 Polygon_2_Conversion(Traits::Polygon_2 const& polygon);
+
+    Polygon_with_holes_2 polygon;
 };
 
 }
