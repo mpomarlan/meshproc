@@ -56,12 +56,12 @@ set( sources
 
 add_library(meshproc_2dg_lib ./src/PolygonEntry.cpp)
 target_link_libraries(meshproc_2dg_lib
-  ${CGAL_LIBRARIES} ${CGAL_3RD_PARTY_LIBRARIES} ${EIGEN_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+  ${CGAL_LIBRARIES} CGAL_Core ${CGAL_3RD_PARTY_LIBRARIES} ${EIGEN_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 add_executable(${PROJECT_NAME} ${sources} ${headers})
 add_to_cached_list( CGAL_EXECUTABLE_TARGETS ${PROJECT_NAME} )
 target_link_libraries(${PROJECT_NAME}
-  meshproc_2dg_lib ${CGAL_LIBRARIES} ${CGAL_3RD_PARTY_LIBRARIES} ${EIGEN_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+  meshproc_2dg_lib ${CGAL_LIBRARIES} CGAL_Core ${CGAL_3RD_PARTY_LIBRARIES} ${EIGEN_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 foreach(dir
     src)

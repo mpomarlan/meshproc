@@ -11,6 +11,7 @@
 #include <eigen_conversions/eigen_msg.h>
 
 #include <meshproc_msgs/PolygonWithHoles.h>
+#include <meshproc_msgs/Skeleton.h>
 
 #include <CGAL/Exact_predicates_exact_constructions_kernel.h>
 #include <CGAL/Homogeneous.h>
@@ -31,6 +32,8 @@
 #include <CGAL/Polygon_triangulation_decomposition_2.h>
 
 #include <CGAL/Triangular_expansion_visibility_2.h>
+
+#include <CGAL/create_straight_skeleton_from_polygon_with_holes_2.h>
 
 #include <meshproc_2dg/typedefs.h>
 #include <meshproc_2dg/PolygonEntry.h>
@@ -107,6 +110,40 @@ bool PolygonEntry::writeToMsg(meshproc_msgs::PolygonWithHoles &msg, Polygon_with
     {
         PolygonEntry::writeToMsg(msg.holes[k], *it);
         k++;
+    }
+    return true;
+}
+
+bool PolygonEntry::writeToMsg(meshproc_msgs::Skeleton &msg, Skeleton const& skeleton)
+{
+    msg.vertices.clear(); msg.vertices.reserve(skeleton.size_of_vertices());
+    msg.edge_ends_L.clear(); msg.edge_ends_L.reserve(skeleton.size_of_halfedges() / 2);
+    msg.edge_ends_R.clear(); msg.edge_ends_R.reserve(skeleton.size_of_halfedges() / 2);
+    for(Skeleton::Vertex_const_iterator it = skeleton.vertices_begin(); it != skeleton.vertices_end(); it++)
+    {
+        geometry_msgs::Point aux;
+        aux.x = ::CGAL::to_double(it->point().x());
+        aux.y = ::CGAL::to_double(it->point().y());
+        aux.z = 0.0;
+        msg.vertices.push_back(aux);
+    }
+    typedef CGAL::Inverse_index<Skeleton::Vertex_const_iterator> Index;
+    Index index( skeleton.vertices_begin(), skeleton.vertices_end());
+    std::vector<std::vector<bool> > wroteEdge;
+    std::vector<bool> aux; aux.clear(); aux.resize(skeleton.size_of_vertices(), false);
+    wroteEdge.clear();
+    wroteEdge.resize(skeleton.size_of_vertices(), aux);
+    for(Skeleton::Halfedge_const_iterator it = skeleton.halfedges_begin(); it != skeleton.halfedges_end(); it++)
+    {
+        size_t indexA = index[it->vertex()];
+        size_t indexB = index[it->opposite()->vertex()];
+        if(it->is_bisector() && (!wroteEdge[indexA][indexB]))
+        {
+            wroteEdge[indexA][indexB] = true;
+            wroteEdge[indexB][indexA] = true;
+            msg.edge_ends_L.push_back(indexB);
+            msg.edge_ends_R.push_back(indexA);
+        }
     }
     return true;
 }

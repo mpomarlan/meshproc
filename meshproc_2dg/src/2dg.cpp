@@ -10,6 +10,7 @@
 #include <meshproc_msgs/PolygonConvexDecomposition.h>
 #include <meshproc_msgs/PolygonCSGRequest.h>
 #include <meshproc_msgs/PolygonVisibility.h>
+#include <meshproc_msgs/GetPolygonSkeleton.h>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -20,6 +21,8 @@
 #include <CGAL/Polygon_with_holes_2.h>
 #include <CGAL/Partition_traits_2.h>
 #include <CGAL/Partition_is_valid_traits_2.h>
+
+#include <CGAL/create_straight_skeleton_from_polygon_with_holes_2.h>
 
 #include <meshproc_2dg/typedefs.h>
 #include <meshproc_2dg/PolygonEntry.h>
@@ -82,6 +85,16 @@ bool do_PolygonVisibility(meshproc_msgs::PolygonVisibility::Request &req,
     return true;
 }
 
+bool do_GetPolygonSkeleton(meshproc_msgs::GetPolygonSkeleton::Request &req,
+                           meshproc_msgs::GetPolygonSkeleton::Response &res)
+{
+    meshproc_2dg::Polygon_with_holes_2 polygon;
+    meshproc_2dg::PolygonEntry::loadFromMsg(req.polygon, polygon);
+    meshproc_2dg::SkeletonPtr skeleton = CGAL::create_interior_straight_skeleton_2(polygon);
+    meshproc_2dg::PolygonEntry::writeToMsg(res.skeleton, *skeleton);
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
   ros::init(argc, argv, "meshproc_2dg");
@@ -91,6 +104,7 @@ int main(int argc, char *argv[])
   ros::ServiceServer PolygonConvexDecomposition_service = n.advertiseService("meshproc_2dg/PolygonConvexDecomposition", do_PolygonConvexDecomposition);
   ros::ServiceServer PolygonCSGRequest_service = n.advertiseService("meshproc_2dg/PolygonCSGRequest", do_PolygonCSGRequest);
   ros::ServiceServer PolygonVisibility_service = n.advertiseService("meshproc_2dg/PolygonVisibility", do_PolygonVisibility);
+  ros::ServiceServer PolygonSkeleton_service = n.advertiseService("meshproc_2dg/GetPolygonSkeleton", do_GetPolygonSkeleton);
   ROS_INFO(" ... all done.");
 
   ros::spin();

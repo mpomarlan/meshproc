@@ -13,6 +13,7 @@ set(MSG_DEPS
 set(MSG_FILES
   Dummy.msg
   PolygonWithHoles.msg
+  Skeleton.msg
 )
 
 set(SRV_FILES
@@ -27,6 +28,7 @@ set(SRV_FILES
   GetMeshProps.srv
   GetMeshSkeleton.srv
   GetNearMeshVertices.srv
+  GetPolygonSkeleton.srv
   LoadMesh.srv
   PolygonConvexDecomposition.srv
   PolygonCSGRequest.srv

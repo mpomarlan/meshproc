@@ -1,0 +1,4 @@
+meshproc_msgs/PolygonWithHoles polygon
+---
+meshproc_msgs/Skeleton skeleton
+

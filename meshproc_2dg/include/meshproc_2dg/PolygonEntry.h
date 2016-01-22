@@ -19,6 +19,7 @@ public:
     static bool loadFromMsg(const meshproc_msgs::PolygonWithHoles &msg, Polygon_with_holes_2 & polygon);
     static bool writeToMsg(geometry_msgs::Polygon &msg, Polygon_2 const& polygon);
     static bool writeToMsg(meshproc_msgs::PolygonWithHoles &msg, Polygon_with_holes_2 const& polygon);
+    static bool writeToMsg(meshproc_msgs::Skeleton &msg, Skeleton const& skeleton);
     static bool convexDecomposition(std::vector<Polygon_2> & results, Polygon_with_holes_2 const& polygon, bool ignoreHoles, bool triangulate);
     static bool csgRequest(Polygon_with_holes_2 const& polygon_A, Polygon_with_holes_2 const& polygon_B, std::list<Polygon_with_holes_2> & result, int operation);
     static bool visibility(Polygon_with_holes_2 const& polygon, std::vector<Point_2> const& points, std::vector<Polygon_2> & results);
