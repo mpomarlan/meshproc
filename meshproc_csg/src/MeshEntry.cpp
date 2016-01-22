@@ -22,6 +22,9 @@
 #include <CGAL/Constrained_Delaunay_triangulation_2.h>
 #include <CGAL/Triangulation_face_base_with_info_2.h>
 
+#include <CGAL/extract_mean_curvature_flow_skeleton.h>
+#include <boost/foreach.hpp>
+
 #include <trimesh/TriMesh.h>
 #include <trimesh/TriMesh_algo.h>
 
@@ -865,81 +868,133 @@ bool MeshEntry::getMeshSkeleton(bool approximate, double duplicate_distance, std
     z.clear();
     e_L.clear();
     e_R.clear();
-    //if(approximate): right now, only use the approximate version
-    trimesh::TriMesh M;
-    M.vertices.clear();
-    M.faces.clear();
-    MeshEntry::write_to_trimesh(mesh_data, &M);
-    int maxK = M.faces.size();
-    std::vector<std::pair<int, int> > vertex_replacements;
-    MeshEntry::init_sets(M.vertices.size(), vertex_replacements);
-    for(int k = 0; k < maxK; k++)
+    if(approximate)
     {
-        double xA, xB, xC, yA, yB, yC, zA, zB, zC;
-        int a, b, c;
-        a = M.faces[k].v[0]; xA = M.vertices[a][0]; yA = M.vertices[a][1]; zA = M.vertices[a][2];
-        b = M.faces[k].v[1]; xB = M.vertices[b][0]; yB = M.vertices[b][1]; zB = M.vertices[b][2];
-        c = M.faces[k].v[2]; xC = M.vertices[c][0]; yC = M.vertices[c][1]; zC = M.vertices[c][2];
-        if(MeshEntry::manhattan_distance(xA, yA, zA, xB, yB, zB) < duplicate_distance)
-            MeshEntry::merge_sets(a, b, vertex_replacements);
-        if(MeshEntry::manhattan_distance(xC, yC, zC, xB, yB, zB) < duplicate_distance)
-            MeshEntry::merge_sets(c, b, vertex_replacements);
-        if(MeshEntry::manhattan_distance(xA, yA, zA, xC, yC, zC) < duplicate_distance)
-            MeshEntry::merge_sets(a, c, vertex_replacements);
-    }
+        trimesh::TriMesh M;
+        M.vertices.clear();
+        M.faces.clear();
+        MeshEntry::write_to_trimesh(mesh_data, &M);
+        int maxK = M.faces.size();
+        std::vector<std::pair<int, int> > vertex_replacements;
+        MeshEntry::init_sets(M.vertices.size(), vertex_replacements);
+        for(int k = 0; k < maxK; k++)
+        {
+            double xA, xB, xC, yA, yB, yC, zA, zB, zC;
+            int a, b, c;
+            a = M.faces[k].v[0]; xA = M.vertices[a][0]; yA = M.vertices[a][1]; zA = M.vertices[a][2];
+            b = M.faces[k].v[1]; xB = M.vertices[b][0]; yB = M.vertices[b][1]; zB = M.vertices[b][2];
+            c = M.faces[k].v[2]; xC = M.vertices[c][0]; yC = M.vertices[c][1]; zC = M.vertices[c][2];
+            if(MeshEntry::manhattan_distance(xA, yA, zA, xB, yB, zB) < duplicate_distance)
+                MeshEntry::merge_sets(a, b, vertex_replacements);
+            if(MeshEntry::manhattan_distance(xC, yC, zC, xB, yB, zB) < duplicate_distance)
+                MeshEntry::merge_sets(c, b, vertex_replacements);
+            if(MeshEntry::manhattan_distance(xA, yA, zA, xC, yC, zC) < duplicate_distance)
+                MeshEntry::merge_sets(a, c, vertex_replacements);
+        }
 
-    int remaining_vertices = 0;
-    maxK = M.vertices.size();
-    for(int k = 0; k < maxK; k++)
-        if(k == MeshEntry::get_set_index(k, vertex_replacements))
-            remaining_vertices++;
-    x.reserve(remaining_vertices);
-    y.reserve(remaining_vertices);
-    z.reserve(remaining_vertices);
-    e_L.reserve(remaining_vertices);
-    e_R.reserve(remaining_vertices);
-    std::vector<int> new_indices;
-    new_indices.clear(); new_indices.resize(maxK);
-    for(int k = 0, ci = 0; k < maxK; k++)
-    {
-        if(k == MeshEntry::get_set_index(k, vertex_replacements))
+        int remaining_vertices = 0;
+        maxK = M.vertices.size();
+        for(int k = 0; k < maxK; k++)
+            if(k == MeshEntry::get_set_index(k, vertex_replacements))
+                remaining_vertices++;
+        x.reserve(remaining_vertices);
+        y.reserve(remaining_vertices);
+        z.reserve(remaining_vertices);
+        e_L.reserve(remaining_vertices);
+        e_R.reserve(remaining_vertices);
+        std::vector<int> new_indices;
+        new_indices.clear(); new_indices.resize(maxK);
+        for(int k = 0, ci = 0; k < maxK; k++)
         {
-            new_indices[k] = ci; ci++;
-            x.push_back(M.vertices[k][0]);
-            y.push_back(M.vertices[k][1]);
-            z.push_back(M.vertices[k][2]);
+            if(k == MeshEntry::get_set_index(k, vertex_replacements))
+            {
+                new_indices[k] = ci; ci++;
+                x.push_back(M.vertices[k][0]);
+                y.push_back(M.vertices[k][1]);
+                z.push_back(M.vertices[k][2]);
+            }
+        }
+        std::vector<std::vector<bool> > marked_edge;
+        marked_edge.clear(); marked_edge.resize(remaining_vertices);
+        for(int k = 0; k < remaining_vertices; k++)
+        {
+            marked_edge[k].clear(); marked_edge[k].resize(remaining_vertices, false);
+        }
+        maxK = M.faces.size();
+        for(int k = 0; k < maxK; k++)
+        {
+            int a, b, c;
+            a = new_indices[MeshEntry::get_set_index(M.faces[k].v[0], vertex_replacements)];
+            b = new_indices[MeshEntry::get_set_index(M.faces[k].v[1], vertex_replacements)];
+            c = new_indices[MeshEntry::get_set_index(M.faces[k].v[2], vertex_replacements)];
+            if((a != b) && (!marked_edge[a][b]))
+            {
+                marked_edge[a][b] = marked_edge[b][a] = true;
+                e_L.push_back(a);
+                e_R.push_back(b);
+            }
+            if((a != c) && (!marked_edge[a][c]))
+            {
+                marked_edge[a][c] = marked_edge[c][a] = true;
+                e_L.push_back(a);
+                e_R.push_back(c);
+            }
+            if((c != b) && (!marked_edge[c][b]))
+            {
+                marked_edge[c][b] = marked_edge[b][c] = true;
+                e_L.push_back(c);
+                e_R.push_back(b);
+            }
         }
     }
-    std::vector<std::vector<bool> > marked_edge;
-    marked_edge.clear(); marked_edge.resize(remaining_vertices);
-    for(int k = 0; k < remaining_vertices; k++)
+    else
     {
-        marked_edge[k].clear(); marked_edge[k].resize(remaining_vertices, false);
-    }
-    maxK = M.faces.size();
-    for(int k = 0; k < maxK; k++)
-    {
-        int a, b, c;
-        a = new_indices[MeshEntry::get_set_index(M.faces[k].v[0], vertex_replacements)];
-        b = new_indices[MeshEntry::get_set_index(M.faces[k].v[1], vertex_replacements)];
-        c = new_indices[MeshEntry::get_set_index(M.faces[k].v[2], vertex_replacements)];
-        if((a != b) && (!marked_edge[a][b]))
+        typedef CGAL::Simple_cartesian<double> KernelSimple;
+        typedef KernelSimple::Point_3 PointSimple;
+        typedef CGAL::Polyhedron_3<KernelSimple> PolyhedronSimple;
+        typedef CGAL::Mean_curvature_flow_skeletonization<PolyhedronSimple>::Skeleton Skeleton;
+        typedef Skeleton::vertex_descriptor SkeletonVertex;
+        typedef Skeleton::edge_descriptor SkeletonEdge;
+
+        PolyhedronSimple meshSimp;
+
+        meshSimp.clear();
+        Convert_mesh_kernel<PolyhedronSimple::HalfedgeDS, Polyhedron> build_mesh(mesh_data);
+        meshSimp.delegate(build_mesh);
+
+        Skeleton skeleton;
+        std::vector<std::vector<bool> > wroteEdge; wroteEdge.clear();
+        std::vector<bool> aux; aux.clear();
+        std::map<SkeletonVertex, int> index; index.clear();
+        CGAL::extract_mean_curvature_flow_skeleton(meshSimp, skeleton);
+        int maxK = boost::num_vertices(skeleton);
+        aux.resize(maxK, false);
+        wroteEdge.resize(maxK, aux);
+        x.reserve(maxK);
+        y.reserve(maxK);
+        z.reserve(maxK);
+        e_L.reserve(boost::num_edges(skeleton));
+        e_R.reserve(boost::num_edges(skeleton));
+        int k = 0;
+        BOOST_FOREACH(SkeletonVertex v, vertices(skeleton))
         {
-            marked_edge[a][b] = marked_edge[b][a] = true;
-            e_L.push_back(a);
-            e_R.push_back(b);
+            index.insert(std::pair<SkeletonVertex, int>(v, k));
+            k++;
+            x.push_back(::CGAL::to_double(skeleton[v].point.x()));
+            y.push_back(::CGAL::to_double(skeleton[v].point.y()));
+            z.push_back(::CGAL::to_double(skeleton[v].point.z()));
         }
-        if((a != c) && (!marked_edge[a][c]))
+        BOOST_FOREACH(SkeletonEdge e, edges(skeleton))
         {
-            marked_edge[a][c] = marked_edge[c][a] = true;
-            e_L.push_back(a);
-            e_R.push_back(c);
-        }
-        if((c != b) && (!marked_edge[c][b]))
-        {
-            marked_edge[c][b] = marked_edge[b][c] = true;
-            e_L.push_back(c);
-            e_R.push_back(b);
+            int indexA = index.find(source(e, skeleton))->second;
+            int indexB = index.find(target(e, skeleton))->second;
+            if(!wroteEdge[indexA][indexB])
+            {
+                wroteEdge[indexA][indexB] = true;
+                wroteEdge[indexB][indexA] = true;
+                e_L.push_back(indexA);
+                e_R.push_back(indexB);
+            }
         }
     }
 

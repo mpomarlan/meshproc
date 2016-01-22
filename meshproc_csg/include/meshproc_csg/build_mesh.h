@@ -4,6 +4,47 @@
 
 namespace meshproc_csg
 {
+
+// A modifier to create a polyhedron from another, while switching between kernels
+template <class HDSTarg, class PolyhedronSrc>
+class Convert_mesh_kernel : public CGAL::Modifier_base<HDSTarg> {
+public:
+    Convert_mesh_kernel(PolyhedronSrc const& P):P(P) {}
+    void operator()(HDSTarg& hds)
+    {
+        CGAL::Polyhedron_incremental_builder_3<HDSTarg> B(hds, true);
+        B.begin_surface(P.size_of_vertices(), P.size_of_facets(), 0);
+        typedef typename HDSTarg::Vertex Vertex;
+        typedef typename Vertex::Point Point;
+        for(typename PolyhedronSrc::Vertex_const_iterator it = P.vertices_begin(); it != P.vertices_end(); it++)
+        {
+            B.add_vertex( Point( ::CGAL::to_double(it->point().x()),
+                                 ::CGAL::to_double(it->point().y()),
+                                 ::CGAL::to_double(it->point().z())));
+        }
+        typedef CGAL::Inverse_index<typename PolyhedronSrc::Vertex_const_iterator> Index;
+        Index index(P.vertices_begin(), P.vertices_end());
+        for(typename PolyhedronSrc::Facet_const_iterator it = P.facets_begin();
+            it != P.facets_end(); it++)
+        {
+            typename Polyhedron::Halfedge_around_facet_const_circulator hc_end = it->facet_begin();
+            typename Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end;
+            std::size_t n = circulator_size(hc_end);
+            B.begin_facet();
+            do
+            {
+                B.add_vertex_to_facet(index[hc_a->vertex()]);
+                hc_a++;
+            }while(hc_a != hc_end);
+            B.end_facet();
+        }
+        B.end_surface();
+    }
+
+protected:
+    PolyhedronSrc const& P;
+};
+
 // A modifier creating a polyhedron with the incremental builder from a triangulated mesh.
 template <class HDS>
 class Build_mesh : public CGAL::Modifier_base<HDS> {
