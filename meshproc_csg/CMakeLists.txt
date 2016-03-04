@@ -79,8 +79,11 @@ foreach(dir
       PATTERN ".git" EXCLUDE)
 endforeach()
 
-install (FILES 
-    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+#install (FILES 
+#    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
+
+#install (DIRECTORY include/meshproc_csg/
+#    DESTINATION /home/blandc/catkin_ws/devel/include/meshproc_csg/)
 
 install(TARGETS meshproc_csg_lib
         LIBRARY DESTINATION lib
@@ -88,6 +91,6 @@ install(TARGETS meshproc_csg_lib
 
 install(TARGETS ${PROJECT_NAME}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION})
-#install(DIRECTORY include/ DESTINATION include)
+install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION})
 

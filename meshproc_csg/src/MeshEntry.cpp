@@ -164,6 +164,13 @@ MeshEntry::MeshEntry()
     triangulated = false;
 }
 
+MeshEntry::MeshEntry(Polyhedron const& polyhedron)
+{
+    props_updated = false;
+    triangulated = false;
+    mesh_data = polyhedron;
+}
+
 MeshEntry::~MeshEntry()
 {
 }

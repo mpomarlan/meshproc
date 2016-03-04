@@ -27,6 +27,7 @@ public:
         nr_connected_components(orig.nr_connected_components),
         Euler_characteristic(orig.Euler_characteristic)
         {}
+    MeshEntry(Polyhedron const& polyhedron);
     ~MeshEntry();
 
     void clear(void);
