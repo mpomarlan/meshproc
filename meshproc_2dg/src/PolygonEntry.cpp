@@ -12,6 +12,7 @@
 
 #include <meshproc_msgs/PolygonWithHoles.h>
 #include <meshproc_msgs/Skeleton.h>
+#include <shape_msgs/Mesh.h>
 
 #include <CGAL/Exact_predicates_exact_constructions_kernel.h>
 #include <CGAL/Homogeneous.h>
@@ -35,8 +36,15 @@
 
 #include <CGAL/create_straight_skeleton_from_polygon_with_holes_2.h>
 
+#include <CGAL/Polyhedron_3.h>
+#include <CGAL/Nef_polyhedron_3.h>
+
 #include <meshproc_2dg/typedefs.h>
 #include <meshproc_2dg/PolygonEntry.h>
+
+#include <CGAL/triangulate_polyhedron.h>
+#include <CGAL/Constrained_Delaunay_triangulation_2.h>
+#include <CGAL/Triangulation_face_base_with_info_2.h>
 
 namespace meshproc_2dg
 {
@@ -50,7 +58,101 @@ typedef Arrangement_2::Face_const_handle                  Face_const_handle;
 typedef CGAL::Triangular_expansion_visibility_2<Arrangement_2> TEV;
 typedef CGAL::Arr_point_location_result<Arrangement_2>    Point_location_result;
 typedef std::pair<Point_2, Point_location_result::Type>   Query_result;
+typedef CGAL::Nef_polyhedron_3<Kernel> Nef_polyhedron;
 
+template <class HDS>
+class Build_prism : public CGAL::Modifier_base<HDS> {
+public:
+    Build_prism(double height, double depth, Polygon_2 const& triangle): height(height), depth(depth), triangle(triangle) {}
+    void operator()( HDS& hds) {
+        // Postcondition: hds is a valid polyhedral surface.
+        CGAL::Polyhedron_incremental_builder_3<HDS> B( hds, true);
+
+        B.begin_surface( 6, 8, 0);
+        typedef typename HDS::Vertex   Vertex;
+        typedef typename Vertex::Point Point;
+
+        B.add_vertex( Point( ::CGAL::to_double(triangle.vertex(0).x()), ::CGAL::to_double(triangle.vertex(0).y()), height));
+        B.add_vertex( Point( ::CGAL::to_double(triangle.vertex(1).x()), ::CGAL::to_double(triangle.vertex(1).y()), height));
+        B.add_vertex( Point( ::CGAL::to_double(triangle.vertex(2).x()), ::CGAL::to_double(triangle.vertex(2).y()), height));
+
+        B.add_vertex( Point( ::CGAL::to_double(triangle.vertex(0).x()), ::CGAL::to_double(triangle.vertex(0).y()), depth));
+        B.add_vertex( Point( ::CGAL::to_double(triangle.vertex(1).x()), ::CGAL::to_double(triangle.vertex(1).y()), depth));
+        B.add_vertex( Point( ::CGAL::to_double(triangle.vertex(2).x()), ::CGAL::to_double(triangle.vertex(2).y()), depth));
+
+        B.begin_facet();
+        B.add_vertex_to_facet(0);
+        B.add_vertex_to_facet(1);
+        B.add_vertex_to_facet(2);
+        B.end_facet();
+        B.begin_facet();
+        B.add_vertex_to_facet(5);
+        B.add_vertex_to_facet(4);
+        B.add_vertex_to_facet(3);
+        B.end_facet();
+        B.begin_facet();
+        B.add_vertex_to_facet(0);
+        B.add_vertex_to_facet(3);
+        B.add_vertex_to_facet(1);
+        B.end_facet();
+        B.begin_facet();
+        B.add_vertex_to_facet(3);
+        B.add_vertex_to_facet(4);
+        B.add_vertex_to_facet(1);
+        B.end_facet();
+        B.begin_facet();
+        B.add_vertex_to_facet(0);
+        B.add_vertex_to_facet(5);
+        B.add_vertex_to_facet(3);
+        B.end_facet();
+        B.begin_facet();
+        B.add_vertex_to_facet(0);
+        B.add_vertex_to_facet(2);
+        B.add_vertex_to_facet(5);
+        B.end_facet();
+        B.begin_facet();
+        B.add_vertex_to_facet(2);
+        B.add_vertex_to_facet(1);
+        B.add_vertex_to_facet(5);
+        B.end_facet();
+        B.begin_facet();
+        B.add_vertex_to_facet(5);
+        B.add_vertex_to_facet(1);
+        B.add_vertex_to_facet(4);
+        B.end_facet();
+
+        B.end_surface();
+    }
+protected:
+    double height, depth;
+    Polygon_2 triangle;
+};
+
+bool PolygonEntry::extrudePolygon(Polyhedron &mesh, std::vector<meshproc_2dg::Polygon_2> &triangles, double extrudeHeight, double extrudeDepth)
+{
+    int maxK = triangles.size();
+
+    std::vector<meshproc_2dg::Nef_polyhedron> nefs; nefs.clear(); nefs.resize(maxK);
+    for(int k = 0; k < maxK; k++)
+    {
+        meshproc_2dg::Polyhedron P;
+        Build_prism<Polyhedron::HalfedgeDS> modifier(extrudeHeight, extrudeDepth, triangles[k]);
+        P.delegate(modifier);
+        meshproc_2dg::Nef_polyhedron nef(P);
+        nefs[k] = nef;
+    }
+
+    meshproc_2dg::Nef_polyhedron result(Nef_polyhedron::EMPTY);
+    if(maxK)
+    {
+        result = nefs[0];
+        for(int k = 1; k < maxK; k++)
+            result = result + nefs[k];
+    }
+    result.convert_to_polyhedron(mesh);
+
+    return true;
+}
 
 bool PolygonEntry::loadFromMsg(meshproc_msgs::PolygonWithHoles const& msg)
 {

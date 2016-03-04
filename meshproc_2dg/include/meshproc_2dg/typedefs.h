@@ -18,6 +18,8 @@ typedef CGAL::Partition_is_valid_traits_2<Traits, Is_convex_2>
 typedef CGAL::Straight_skeleton_2<Kernel>                 Skeleton;
 typedef boost::shared_ptr<Skeleton>                       SkeletonPtr;
 
+typedef CGAL::Polyhedron_3<Kernel> Polyhedron;
+
 }
 
 #endif

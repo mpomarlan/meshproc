@@ -32,6 +32,7 @@ set(SRV_FILES
   LoadMesh.srv
   PolygonConvexDecomposition.srv
   PolygonCSGRequest.srv
+  PolygonExtrude.srv
   PolygonVisibility.srv
   ProjectMesh.srv
   SolidifyMesh.srv

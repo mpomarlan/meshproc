@@ -34,9 +34,14 @@ if ( NOT Boost_FOUND )
   return()  
 endif()
 
+find_package(PkgConfig)
 find_package(catkin REQUIRED COMPONENTS
+  trimesh
+  meshproc_csg
   meshproc_msgs
+  shape_msgs
   roscpp
+  roslib
 )
 
 include_directories(${catkin_INCLUDE_DIRS})
@@ -51,6 +56,13 @@ catkin_package(
   CATKIN_DEPENDS
 )
 
+set( spec_libs
+     trimesh
+     GL
+     GLU
+     GLEW
+     )
+
 set( sources
   src/2dg.cpp)
 
@@ -61,7 +73,7 @@ target_link_libraries(meshproc_2dg_lib
 add_executable(${PROJECT_NAME} ${sources} ${headers})
 add_to_cached_list( CGAL_EXECUTABLE_TARGETS ${PROJECT_NAME} )
 target_link_libraries(${PROJECT_NAME}
-  meshproc_2dg_lib ${CGAL_LIBRARIES} CGAL_Core ${CGAL_3RD_PARTY_LIBRARIES} ${EIGEN_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+  meshproc_2dg_lib meshproc_csg_lib ${spec_libs} ${CGAL_LIBRARIES} CGAL_Core ${CGAL_3RD_PARTY_LIBRARIES} ${EIGEN_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
 
 foreach(dir
     src)

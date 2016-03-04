@@ -11,6 +11,8 @@
 #include <meshproc_msgs/PolygonCSGRequest.h>
 #include <meshproc_msgs/PolygonVisibility.h>
 #include <meshproc_msgs/GetPolygonSkeleton.h>
+#include <meshproc_msgs/PolygonExtrude.h>
+#include <shape_msgs/Mesh.h>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -22,10 +24,45 @@
 #include <CGAL/Partition_traits_2.h>
 #include <CGAL/Partition_is_valid_traits_2.h>
 
+#include <CGAL/Polyhedron_3.h>
+#include <CGAL/Nef_polyhedron_3.h>
+
 #include <CGAL/create_straight_skeleton_from_polygon_with_holes_2.h>
 
 #include <meshproc_2dg/typedefs.h>
 #include <meshproc_2dg/PolygonEntry.h>
+
+#include <trimesh/TriMesh.h>
+#include <trimesh/TriMesh_algo.h>
+
+#include <meshproc_csg/kdtree++/kdtree.hpp>
+
+#include <meshproc_csg/typedefs.h>
+#include <meshproc_csg/csg.h>
+
+bool do_PolygonExtrude(meshproc_msgs::PolygonExtrude::Request &req,
+                       meshproc_msgs::PolygonExtrude::Response &res)
+{
+    meshproc_2dg::Polygon_with_holes_2 polygon;
+    meshproc_2dg::PolygonEntry::loadFromMsg(req.polygon, polygon);
+    std::vector<meshproc_2dg::Polygon_2> results;
+    meshproc_2dg::PolygonEntry::convexDecomposition(results, polygon, false, true);
+
+    meshproc_2dg::Polyhedron mesh;
+    meshproc_2dg::PolygonEntry::extrudePolygon(mesh, results, req.extrudeHeight, req.extrudeDepth);
+
+    meshproc_csg::MeshEntry meshEntry(mesh);
+
+    if(req.mesh_to_file)
+    {
+        meshEntry.writeToFile(req.filename);
+    }
+    if(req.return_mesh)
+    {
+        meshEntry.writeToMsg(res.mesh);
+    }
+    return true;
+}
 
 bool do_PolygonConvexDecomposition(meshproc_msgs::PolygonConvexDecomposition::Request &req,
                                    meshproc_msgs::PolygonConvexDecomposition::Response &res)
@@ -101,6 +138,7 @@ int main(int argc, char *argv[])
   ros::NodeHandle n;
 
   ROS_INFO("Advertising services ...");
+  ros::ServiceServer PolygonExtrude_service = n.advertiseService("meshproc_2dg/PolygonExtrude", do_PolygonExtrude);
   ros::ServiceServer PolygonConvexDecomposition_service = n.advertiseService("meshproc_2dg/PolygonConvexDecomposition", do_PolygonConvexDecomposition);
   ros::ServiceServer PolygonCSGRequest_service = n.advertiseService("meshproc_2dg/PolygonCSGRequest", do_PolygonCSGRequest);
   ros::ServiceServer PolygonVisibility_service = n.advertiseService("meshproc_2dg/PolygonVisibility", do_PolygonVisibility);

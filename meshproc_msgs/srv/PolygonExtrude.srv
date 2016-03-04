@@ -1,0 +1,8 @@
+meshproc_msgs/PolygonWithHoles polygon
+string filename
+int8 return_mesh
+int8 mesh_to_file
+float64 extrudeHeight
+float64 extrudeDepth
+---
+shape_msgs/Mesh mesh

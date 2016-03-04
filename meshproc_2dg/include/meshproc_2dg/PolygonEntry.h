@@ -23,6 +23,7 @@ public:
     static bool convexDecomposition(std::vector<Polygon_2> & results, Polygon_with_holes_2 const& polygon, bool ignoreHoles, bool triangulate);
     static bool csgRequest(Polygon_with_holes_2 const& polygon_A, Polygon_with_holes_2 const& polygon_B, std::list<Polygon_with_holes_2> & result, int operation);
     static bool visibility(Polygon_with_holes_2 const& polygon, std::vector<Point_2> const& points, std::vector<Polygon_2> & results);
+    static bool extrudePolygon(Polyhedron &mesh, std::vector<meshproc_2dg::Polygon_2> &triangles, double extrudeHeight, double extrudeDepth);
 private:
     static Polygon_2 Polygon_2_Conversion(Traits::Polygon_2 const& polygon);
 
