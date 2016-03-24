@@ -11,7 +11,7 @@
 #include <CGAL/Nef_polyhedron_3.h>
 #include <CGAL/minkowski_sum_3.h>
 #include <CGAL/IO/Nef_polyhedron_iostream_3.h>
-#include <CGAL/triangulate_polyhedron.h>
+#include <CGAL/Polygon_mesh_processing/triangulate_faces.h>
 #include <CGAL/bounding_box.h>
 #include <CGAL/convex_decomposition_3.h>
 #include <CGAL/Bounded_kernel.h>

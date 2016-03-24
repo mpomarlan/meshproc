@@ -42,7 +42,7 @@
 #include <meshproc_2dg/typedefs.h>
 #include <meshproc_2dg/PolygonEntry.h>
 
-#include <CGAL/triangulate_polyhedron.h>
+#include <CGAL/Polygon_mesh_processing/triangulate_faces.h>
 #include <CGAL/Constrained_Delaunay_triangulation_2.h>
 #include <CGAL/Triangulation_face_base_with_info_2.h>
 
