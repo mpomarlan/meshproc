@@ -75,7 +75,7 @@ public:
 
     bool getNearVertices(double x, double y, double z, double distance, std::vector<MeshEntry::XYZTriplet> &points) const;
 
-private:
+protected:
     bool loadFromTrimesh(trimesh::TriMesh *M, double duplicate_dist);
     static double manhattan_distance(double xA, double yA, double zA,
                                      double xB, double yB, double zB);
