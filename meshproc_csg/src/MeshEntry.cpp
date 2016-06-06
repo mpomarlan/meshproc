@@ -22,6 +22,11 @@
 #include <CGAL/Constrained_Delaunay_triangulation_2.h>
 #include <CGAL/Triangulation_face_base_with_info_2.h>
 
+#include <CGAL/boost/graph/graph_traits_Polyhedron_3.h>
+
+
+#include <CGAL/Kernel/global_functions_3.h>
+
 #include <CGAL/extract_mean_curvature_flow_skeleton.h>
 #include <boost/foreach.hpp>
 
@@ -238,6 +243,7 @@ bool MeshEntry::setFromMeshEntry(MeshEntry const& A)
     nr_faces = A.nr_faces;
     nr_connected_components = A.nr_connected_components;
     Euler_characteristic = A.Euler_characteristic;
+    volume = A.volume;
     return true;
 }
 
@@ -315,6 +321,96 @@ bool MeshEntry::setFromConvexHull(MeshEntry & A)
     return update_mesh();
 }
 
+bool MeshEntry::setFromMesh2Prism(MeshEntry const& A, double height, double depth, bool filter, double zcomp)
+{
+    Nef_polyhedron prism;
+    for(Polyhedron::Facet_const_iterator it = A.mesh_data.facets_begin();
+        it!= A.mesh_data.facets_end(); it++)
+    {
+        Polyhedron facetPrism;
+        Build_prism<Polyhedron::HalfedgeDS> prismBuilder(it, height, depth, filter, zcomp);
+        facetPrism.delegate(prismBuilder);
+        Nef_polyhedron aux = Nef_polyhedron(facetPrism);
+        if(!aux.is_empty())
+            prism = prism + aux;
+    }
+    nef_polyhedron = prism;
+    return update_mesh();
+}
+
+bool MeshEntry::filterByNormal(std::string const& filename, double nx, double ny, double nz, double toleratedAngle)
+{
+    triangulate_mesh();
+    double zcomp = std::cos(toleratedAngle);
+    trimesh::TriMesh M;
+    M.vertices.clear();
+    M.faces.clear();
+    int vIndex = 0;
+    for(Polyhedron::Facet_const_iterator it = mesh_data.facets_begin(); it != mesh_data.facets_end(); it++)
+    {
+        double fnx, fny, fnz;
+        std::vector<double> fx, fy, fz;
+
+        Polyhedron::Halfedge_around_facet_const_circulator hc_end = it->facet_begin();
+        Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end;
+        Polyhedron::Halfedge_around_facet_const_circulator hc_b = hc_a; hc_b++;
+
+        fnx = 0; fny = 0; fnz = 0;
+        do
+        {
+            double ax = ::CGAL::to_double(hc_a->vertex()->point().x());
+            double ay = ::CGAL::to_double(hc_a->vertex()->point().y());
+            double az = ::CGAL::to_double(hc_a->vertex()->point().z());
+            fx.push_back(ax);
+            fy.push_back(ay);
+            fz.push_back(az);
+            double bx = ::CGAL::to_double(hc_b->vertex()->point().x());
+            double by = ::CGAL::to_double(hc_b->vertex()->point().y());
+            double bz = ::CGAL::to_double(hc_b->vertex()->point().z());
+            fnx += (ay - by)*(az + bz);
+            fny += (az - bz)*(ax + bx);
+            fnz += (ax - bx)*(ay + by);
+            hc_a++;
+            hc_b++;
+        }while(hc_a != hc_end);
+
+        double l = std::sqrt(fnx*fnx + fny*fny + fnz*fnz);
+        if(l < 0.000001)
+        {
+            fnx = 0;
+            fny = 0;
+            fnz = 0;
+        }
+        else
+        {
+            fnx /= l;
+            fny /= l;
+            fnz /= l;
+        }
+
+        int maxK = fx.size();
+
+        if(zcomp <= (fnx*nx + fny*ny + fnz*nz))
+        {
+            trimesh::point aux;
+            for(int k = 0; k < maxK; k++)
+            {
+                aux[0] = fx[k]; aux[1] = fy[k]; aux[2] = fz[k];
+                M.vertices.push_back(aux);
+            }
+            trimesh::TriMesh::Face auxF;
+            auxF.v[0] = vIndex;
+            auxF.v[1] = vIndex + 1;
+            auxF.v[2] = vIndex + 2;
+            M.faces.push_back(auxF);
+            vIndex += maxK;
+        }
+    }
+    bool wrote_file = M.write(filename.c_str());
+
+    return wrote_file;
+}
+
 bool MeshEntry::getBoundaryPolygon(std::vector<double> &x, std::vector<double> &y, std::vector<double> &z,
                         std::vector<int> &edge_L, std::vector<int> &edge_R)
 {
@@ -359,8 +455,63 @@ bool MeshEntry::getBoundaryPolygon(std::vector<double> &x, std::vector<double> &
     return true;
 }
 
+void getDSeg(double x, double y, double xn, double yn, double f, double &dx, double &dy)
+{
+    dx = xn - x;
+    dy = yn - y;
+    double l = std::sqrt(dx*dx + dy*dy);
+    if(l < 0.01*f)
+    {
+        return;
+    }
+    dx /= l;
+    dy /= l;
+    dx *= (-f);
+    dy *= (-f);
+}
+
+void inflatePolygon(Polygon &poly, double f)
+{
+    int maxK = poly.size();
+    int prev = maxK - 1;
+    int next = 1;
+    std::vector<double> xv, yv;
+    xv.resize(maxK);
+    yv.resize(maxK);
+    for(int k = 0; k < maxK; k++)
+    {
+        double x, y;
+        double xp, yp;
+        double xn, yn;
+        x = ::CGAL::to_double(poly.vertex(k).x());
+        y = ::CGAL::to_double(poly.vertex(k).y());
+        xn = ::CGAL::to_double(poly.vertex(next).x());
+        yn = ::CGAL::to_double(poly.vertex(next).y());
+        xp = ::CGAL::to_double(poly.vertex(prev).x());
+        yp = ::CGAL::to_double(poly.vertex(prev).y());
+        double dx1, dy1, dz1;
+        double dx2, dy2, dz2;
+        getDSeg(x, y, xn, yn, f, dx1, dy1);
+        getDSeg(x, y, xp, yp, f, dx2, dy2);
+        x = x + dx1 + dx2;
+        y = y + dy1 + dy2;
+        xv[k] = x;
+        yv[k] = y;
+        prev++;
+        next++;
+        if(prev == maxK)
+            prev = 0;
+        if(next == maxK)
+            next = 0;
+    }
+    poly.clear();
+    for(int k = 0; k < maxK; k++)
+        poly.push_back(Point_2(xv[k], yv[k]));
+}
+
 bool MeshEntry::setFromProjection(MeshEntry const& A, double nx, double ny, double nz, bool fillHoles)
 {
+    int dbgK = 0;
     double n = std::sqrt(nx*nx + ny*ny + nz*nz);
     if(0.000001 > n)
     {
@@ -388,8 +539,8 @@ bool MeshEntry::setFromProjection(MeshEntry const& A, double nx, double ny, doub
 
     for(Polyhedron::Facet_const_iterator it = A.mesh_data.facets_begin(); it != A.mesh_data.facets_end(); it++)
     {
-        Polygon Pit;
-        Polygon_with_holes Pith;
+        Polygon Pit; Pit.clear();
+        Polygon_with_holes Pith; Pith.clear();
         Polyhedron::Halfedge_around_facet_const_circulator hc_end = it->facet_begin();
         Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end;
         double n = 0;
@@ -429,18 +580,29 @@ bool MeshEntry::setFromProjection(MeshEntry const& A, double nx, double ny, doub
         {
             Pit.reverse_orientation();
         }
+        inflatePolygon(Pit, 0.1);
+
         if(!inited)
         {
             inited = true;
+            //std::cerr << "  <" << std::endl;
             CGAL::join(Pit, Pit, P);
+            //std::cerr << "  >" << std::endl;
         }
         else
         {
             /*A bit of black magic, seems like Bool Ops are a bit more reliable on Polygs with
             holes. Therefore, init a Polygon with holes from the projection of a triangle and
             join it with the previously accumulated projection.*/
+            //if(dbgK < 23)
+            //{
+            //std::cerr << "  <[" << std::endl;
             CGAL::join(Pit, Pit, Pith);
+            //std::cerr << "  ||" << std::endl;
             CGAL::join(Pith, P, P);
+            //std::cerr << "  ]>" << std::endl;
+            //}
+            dbgK++;
         }
     }
 
@@ -665,6 +827,27 @@ int MeshEntry::getEulerCharacteristic(void)
     return Euler_characteristic;
 }
 
+double MeshEntry::getVolume(void)
+{
+    update_properties();
+    return volume;
+}
+
+bool MeshEntry::getVertices(std::vector<Point> &vertices) const
+{
+    vertices.resize(mesh_data.size_of_vertices());
+    int k = 0;
+    for(Polyhedron::Vertex_const_iterator it = mesh_data.vertices_begin();
+        it != mesh_data.vertices_end(); it++)
+        vertices[k++] = it->point();
+    return true;
+}
+
+Polyhedron const& MeshEntry::getMesh(void) const
+{
+    return mesh_data;
+}
+
 void MeshEntry::remove_duplicates(trimesh::TriMesh *M, double duplicate_dist)
 {
     std::vector<size_t> replacements; replacements.clear();
@@ -721,6 +904,38 @@ void MeshEntry::remove_duplicates(trimesh::TriMesh *M, double duplicate_dist)
     replacements.clear();
     kdtree.clear();
 }
+double getSignedTriangleVolume(Polyhedron::Facet const& f)
+{
+    Polyhedron::Halfedge_around_facet_const_circulator hc_a = f.facet_begin();
+    Polyhedron::Halfedge_around_facet_const_circulator hc_b = hc_a; hc_b++;
+    Polyhedron::Halfedge_around_facet_const_circulator hc_c = hc_b; hc_c++;
+
+    double xA, yA, zA;
+    double xB, yB, zB;
+    double xC, yC, zC;
+
+    xA = ::CGAL::to_double(hc_a->vertex()->point().x());
+    yA = ::CGAL::to_double(hc_a->vertex()->point().y());
+    zA = ::CGAL::to_double(hc_a->vertex()->point().z());
+
+    xB = ::CGAL::to_double(hc_b->vertex()->point().x());
+    yB = ::CGAL::to_double(hc_b->vertex()->point().y());
+    zB = ::CGAL::to_double(hc_b->vertex()->point().z());
+
+    xC = ::CGAL::to_double(hc_c->vertex()->point().x());
+    yC = ::CGAL::to_double(hc_c->vertex()->point().y());
+    zC = ::CGAL::to_double(hc_c->vertex()->point().z());
+
+    double v321 = xC*yB*zA;
+    double v231 = xB*yC*zA;
+    double v312 = xC*yA*zB;
+    double v132 = xA*yC*zB;
+    double v213 = xB*yA*zC;
+    double v123 = xA*yB*zC;
+
+    return (1.0/6.0)*(-v321 + v231 + v312 - v132 - v213 + v123);
+}
+
 void MeshEntry::update_properties(void)
 {
     if(!props_updated)
@@ -734,8 +949,202 @@ void MeshEntry::update_properties(void)
         nr_edges = (mesh_data.size_of_halfedges() >> 1);
         nr_faces = mesh_data.size_of_facets();
         Euler_characteristic = nr_vertices - nr_edges + nr_faces;
-        nr_connected_components = 1; //TODO: !!!! Need to write a proper counter here
+        nr_connected_components = nef_polyhedron.number_of_volumes() - 1;
+        volume = 0.0;
+        if(is_closed)
+        {
+            triangulate_mesh();
+            for(Polyhedron::Facet_const_iterator it = mesh_data.facets_begin();
+                it != mesh_data.facets_end(); it++)
+            {
+                volume += getSignedTriangleVolume(*it);
+            }
+            if(volume < 0.0)
+                volume = -volume;
+        }
     }
+}
+
+double MeshEntry::triangleArea(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy, double cz)
+{
+    double dAB = MeshEntry::euclidean_distance(ax, ay, az, bx, by, bz);
+    double dBC = MeshEntry::euclidean_distance(cx, cy, cz, bx, by, bz);
+    double dAC = MeshEntry::euclidean_distance(ax, ay, az, cx, cy, cz);
+    double s = 0.5*(dAB + dBC + dAC);
+    double retq = std::sqrt(s*(s - dAB)*(s - dBC)*(s - dAC));
+    return retq;
+}
+
+bool MeshEntry::removeDegenerateFacets(Polyhedron &meshData)
+{
+    std::vector<Polyhedron::Facet_iterator> degenerateFacets;
+    degenerateFacets.clear();
+
+    //First, remove duplicate vertices.
+    for(Polyhedron::Facet_iterator it = meshData.facets_begin();
+        it != meshData.facets_end(); it++)
+    {
+        Polyhedron::Halfedge_around_facet_circulator hc_c = it->facet_begin();
+        Polyhedron::Halfedge_around_facet_circulator hc_a = hc_c; hc_a++;
+        Polyhedron::Halfedge_around_facet_circulator hc_b = hc_a; hc_b++;
+
+        double ax = ::CGAL::to_double(hc_a->vertex()->point().x());
+        double ay = ::CGAL::to_double(hc_a->vertex()->point().y());
+        double az = ::CGAL::to_double(hc_a->vertex()->point().z());
+        double bx = ::CGAL::to_double(hc_b->vertex()->point().x());
+        double by = ::CGAL::to_double(hc_b->vertex()->point().y());
+        double bz = ::CGAL::to_double(hc_b->vertex()->point().z());
+        double cx = ::CGAL::to_double(hc_c->vertex()->point().x());
+        double cy = ::CGAL::to_double(hc_c->vertex()->point().y());
+        double cz = ::CGAL::to_double(hc_c->vertex()->point().z());
+
+        double dAB = MeshEntry::euclidean_distance(ax, ay, az, bx, by, bz);
+        double dBC = MeshEntry::euclidean_distance(cx, cy, cz, bx, by, bz);
+        double dAC = MeshEntry::euclidean_distance(ax, ay, az, cx, cy, cz);
+
+        bool needRepairs = false;
+        Polyhedron::Vertex_handle v_t;
+        if((dAB < 0.0001) && (dBC < 0.0001) && (dAC < 0.0001))
+        {
+            std::cout << "Collapsed triangle found, removing." << std::endl;
+            v_t = hc_a->vertex();
+            meshData.erase_center_vertex(hc_c);
+            meshData.erase_center_vertex(hc_b);
+            needRepairs = true;
+        }
+        else if((dAB < 0.0001) || (dBC < 0.0001) || (dAC < 0.0001))
+        {
+            std::cout << "Found duplicate vertex." << std::endl;
+            needRepairs = true;
+            if(dAB < 0.0001)
+            {
+                v_t = hc_a->vertex();
+                meshData.erase_center_vertex(hc_b);
+            }
+            if(dBC < 0.0001)
+            {
+                v_t = hc_b->vertex();
+                meshData.erase_center_vertex(hc_c);
+            }
+            if(dAC < 0.0001)
+            {
+                v_t = hc_c->vertex();
+                meshData.erase_center_vertex(hc_a);
+            }
+        }
+
+        if(needRepairs)
+        {
+            bool ff = false;
+            do
+            {
+                ff = false;
+                Polyhedron::Halfedge_around_vertex_circulator it = v_t->vertex_begin();
+                do
+                {
+                    if(3 < CGAL::circulator_size(it->facet_begin()))
+                    {
+                        std::cout << "Splitting non-triangular face inserted afer dup.vert. removal." << std::endl;
+                        Polyhedron::Halfedge_around_facet_circulator hc_a = it->facet_begin();
+                        while(v_t != hc_a->vertex())
+                            hc_a++;
+                        Polyhedron::Halfedge_around_facet_circulator hc_b = hc_a; hc_b++; hc_b++;
+                        meshData.split_facet(hc_a, hc_b);
+                        ff = true;
+                        break;
+                    }
+                    it++;
+                }while(it != v_t->vertex_begin());
+            }while(ff);
+        }
+    }
+
+    for(Polyhedron::Facet_iterator it = meshData.facets_begin();
+        it != meshData.facets_end(); it++)
+    {
+        Polyhedron::Halfedge_around_facet_circulator hc_c = it->facet_begin();
+        Polyhedron::Halfedge_around_facet_circulator hc_a = hc_c; hc_a++;
+        Polyhedron::Halfedge_around_facet_circulator hc_b = hc_a; hc_b++;
+
+        double ax = ::CGAL::to_double(hc_a->vertex()->point().x());
+        double ay = ::CGAL::to_double(hc_a->vertex()->point().y());
+        double az = ::CGAL::to_double(hc_a->vertex()->point().z());
+        double bx = ::CGAL::to_double(hc_b->vertex()->point().x());
+        double by = ::CGAL::to_double(hc_b->vertex()->point().y());
+        double bz = ::CGAL::to_double(hc_b->vertex()->point().z());
+        double cx = ::CGAL::to_double(hc_c->vertex()->point().x());
+        double cy = ::CGAL::to_double(hc_c->vertex()->point().y());
+        double cz = ::CGAL::to_double(hc_c->vertex()->point().z());
+
+        double area = MeshEntry::triangleArea(ax, ay, az, bx, by, bz, cx, cy, cz);
+
+        //typedef CGAL::Circulator_project< Polyhedron::Halfedge_around_facet_const_circulator,
+        //        CGAL::Project_vertex_point< Polyhedron::Halfedge, const Point>, const Point, const Point*> Circulator;
+            /* TODO: to implement a better approach
+               typedef Project_vertex< Halfedge> Project_vertex;
+               typedef Project_point< Vertex> Project_point;
+               typedef Compose< Project_vertex, Project_point> Projector;
+               typedef Circulator_project< Halfedge_circulator, Projector> Circulator;
+            */
+        //Circulator pc( it->facet_begin());
+        //Kernel::Vector_3 normal;
+        //::CGAL::normal_vector_newell_3(pc, pc, normal);
+        //if(normal == Kernel::Vector_3(0, 0, 0))
+        if(area < 0.000001)
+        {
+            std::cout << "Degenerate face detected: "
+                      "(" << ax << " " << ay << " " << az << ")-"
+                      "(" << bx << " " << by << " " << bz << ")-"
+                      "(" << cx << " " << cy << " " << cz << ")" << std::endl;
+
+            degenerateFacets.push_back(it);
+        }
+    }
+    int maxK = degenerateFacets.size();
+
+    if(maxK)
+        std::cout << "Total degenerate facets: " << maxK << std::endl;
+
+    for(int k = 0; k < maxK; k++)
+    {
+        Polyhedron::Facet_iterator it = degenerateFacets[k];
+
+        Polyhedron::Halfedge_around_facet_circulator hc_c = it->facet_begin();
+        Polyhedron::Halfedge_around_facet_circulator hc_a = hc_c; hc_a++;
+        Polyhedron::Halfedge_around_facet_circulator hc_b = hc_a; hc_b++;
+
+        double ax = ::CGAL::to_double(hc_a->vertex()->point().x());
+        double ay = ::CGAL::to_double(hc_a->vertex()->point().y());
+        double az = ::CGAL::to_double(hc_a->vertex()->point().z());
+        double bx = ::CGAL::to_double(hc_b->vertex()->point().x());
+        double by = ::CGAL::to_double(hc_b->vertex()->point().y());
+        double bz = ::CGAL::to_double(hc_b->vertex()->point().z());
+        double cx = ::CGAL::to_double(hc_c->vertex()->point().x());
+        double cy = ::CGAL::to_double(hc_c->vertex()->point().y());
+        double cz = ::CGAL::to_double(hc_c->vertex()->point().z());
+
+        double dAB = MeshEntry::euclidean_distance(ax, ay, az, bx, by, bz);
+        double dBC = MeshEntry::euclidean_distance(cx, cy, cz, bx, by, bz);
+        double dAC = MeshEntry::euclidean_distance(ax, ay, az, cx, cy, cz);
+
+        Polyhedron::Halfedge_around_facet_circulator pivot_splitS = hc_a;
+        Polyhedron::Halfedge_around_facet_circulator pivot_join = hc_c;
+        if((dAB < dAC) && (dBC < dAC))
+        {
+            pivot_splitS = hc_b;
+            pivot_join = hc_a;
+        }
+        if((dAC < dAB) && (dBC < dAB))
+        {
+            pivot_splitS = hc_c;
+            pivot_join = hc_b;
+        }
+
+        Polyhedron::Halfedge_handle pivot_splitE = pivot_join->opposite()->next();
+        meshData.join_facet(pivot_join);
+        meshData.split_facet(pivot_splitS, pivot_splitE);
+    }
+    return true;
 }
 
 bool MeshEntry::triangulate_mesh(void)
@@ -749,6 +1158,7 @@ bool MeshEntry::triangulate_mesh(void)
         //https://github.com/openscad/openscad/issues/414
         CGAL::Triangulate_modifier_exact<Polyhedron> modifier;
         mesh_data.delegate(modifier);
+        removeDegenerateFacets(mesh_data);
     }
 }
 
@@ -864,6 +1274,16 @@ double MeshEntry::manhattan_distance(double xA, double yA, double zA,
         retq = dy;
     if(retq < dz)
         retq = dz;
+    return retq;
+}
+
+double MeshEntry::euclidean_distance(double xA, double yA, double zA,
+                                     double xB, double yB, double zB)
+{
+    double dx = xA - xB;
+    double dy = yA - yB;
+    double dz = zA - zB;
+    double retq = std::sqrt(dx*dx + dy*dy + dz*dz);
     return retq;
 }
 

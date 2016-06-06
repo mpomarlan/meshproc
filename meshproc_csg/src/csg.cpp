@@ -23,6 +23,8 @@
 #include <meshproc_msgs/GetMeshSkeleton.h>
 #include <meshproc_msgs/ConvexHull.h>
 #include <meshproc_msgs/ProjectMesh.h>
+#include <meshproc_msgs/Mesh2Prism.h>
+#include <meshproc_msgs/SelectByNormal.h>
 #include <meshproc_msgs/SolidifyMesh.h>
 
 #include <meshproc_csg/kdtree++/kdtree.hpp>
@@ -130,6 +132,7 @@ bool do_GetMeshProps(meshproc_msgs::GetMeshProps::Request &req, meshproc_msgs::G
         res.num_edges = it->second->getNrEdges();
         res.num_faces = it->second->getNrFaces();
         res.Euler_characteristic = it->second->getEulerCharacteristic();
+        res.volume = it->second->getVolume();
     }
     else
     {
@@ -559,6 +562,70 @@ bool do_SolidifyMesh(meshproc_msgs::SolidifyMesh::Request &req,
     return true;
 }
 
+bool do_SelectByNormal(meshproc_msgs::SelectByNormal::Request &req,
+                       meshproc_msgs::SelectByNormal::Response &res)
+{
+    MeshMap::iterator itA = loadedMeshes.find(req.mesh_A);
+    res.mesh_A_loaded = true;
+    res.file_written = false;
+    res.operation_performed = false;
+    res.result = shape_msgs::Mesh();
+    if(itA == loadedMeshes.end())
+    {
+        res.mesh_A_loaded = false;
+        return true;
+    }
+
+    MeshEntry *A;
+    A = itA->second;
+
+    res.operation_performed = A->filterByNormal(req.result_filename,
+                                                req.normal.x, req.normal.y, req.normal.z,
+                                                req.tolerated_angle);
+
+    res.file_written = res.operation_performed;
+    return true;
+}
+
+bool do_Mesh2Prism(meshproc_msgs::Mesh2Prism::Request &req,
+                       meshproc_msgs::Mesh2Prism::Response &res)
+{
+    bool already_had_R = true;
+    MeshMap::iterator itA = loadedMeshes.find(req.mesh_A);
+    res.mesh_A_loaded = true;
+    res.file_written = false;
+    res.operation_performed = false;
+    res.result = shape_msgs::Mesh();
+    if(itA == loadedMeshes.end())
+    {
+        res.mesh_A_loaded = false;
+        return true;
+    }
+
+    MeshMap::iterator itR = loadedMeshes.find(req.mesh_R);
+    if(itR == loadedMeshes.end())
+    {
+        already_had_R = false;
+        itR = loadedMeshes.insert(loadedMeshes.begin(),
+                                 std::pair<std::string, MeshEntry*>(req.mesh_R, new MeshEntry()));
+    }
+    MeshEntry *A, *R;
+    A = itA->second;
+    R = itR->second;
+
+    res.operation_performed = R->setFromMesh2Prism(*A, req.height, req.depth);
+
+    if(req.return_result)
+        R->writeToMsg(res.result);
+    else
+        res.result = shape_msgs::Mesh();
+    if(req.result_to_file)
+    {
+        res.file_written = R->writeToFile(req.result_filename);
+    }
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
   ros::init(argc, argv, "meshproc_csg");
@@ -578,7 +645,9 @@ int main(int argc, char *argv[])
   ros::ServiceServer GetMeshSkeleton_service = n.advertiseService("meshproc_csg/GetMeshSkeleton", do_GetMeshSkeleton);
   ros::ServiceServer ConvexHull_service = n.advertiseService("meshproc_csg/ConvexHull", do_ConvexHull);
   ros::ServiceServer ProjectMesh_service = n.advertiseService("meshproc_csg/ProjectMesh", do_ProjectMesh);
+  ros::ServiceServer Mesh2Prism_service = n.advertiseService("meshproc_csg/Mesh2Prism", do_Mesh2Prism);
   ros::ServiceServer SolidifyMesh_service = n.advertiseService("meshproc_csg/SolidifyMesh", do_SolidifyMesh);
+  ros::ServiceServer selectByNormal_service = n.advertiseService("meshproc_csg/SelectByNormal", do_SelectByNormal);
   ROS_INFO(" ... all done.");
 
   ros::spin();

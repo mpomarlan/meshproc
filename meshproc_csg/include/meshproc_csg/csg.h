@@ -14,7 +14,7 @@ public:
     MeshEntry(MeshEntry const& orig):
         name(""),
         mesh_data(orig.mesh_data),
-        nef_polyhedron(nef_polyhedron),
+        nef_polyhedron(orig.nef_polyhedron),
         props_updated(orig.props_updated),
         triangulated(orig.triangulated),
         is_closed(orig.is_closed),
@@ -25,7 +25,8 @@ public:
         nr_edges(orig.nr_edges),
         nr_faces(orig.nr_faces),
         nr_connected_components(orig.nr_connected_components),
-        Euler_characteristic(orig.Euler_characteristic)
+        Euler_characteristic(orig.Euler_characteristic),
+        volume(orig.volume)
         {}
     MeshEntry(Polyhedron const& polyhedron);
     ~MeshEntry();
@@ -46,6 +47,8 @@ public:
     bool setFromConvexHull(MeshEntry & A);
     bool setFromProjection(MeshEntry const& A, double nx, double ny, double nz, bool fillHoles);
     bool setFromSolidification(MeshEntry const& A, double thickness);
+    bool setFromMesh2Prism(MeshEntry const& A, double height, double depth, bool filter = false, double zcomp = 0);
+    bool filterByNormal(std::string const& filename, double nx, double ny, double nz, double toleratedAngle);
 
     bool getConvexComponents(std::vector<MeshEntry*> &components) const;
 
@@ -67,6 +70,10 @@ public:
     int getNrFaces(void);
     int getNrConnectedComponents(void);
     int getEulerCharacteristic(void);
+    double getVolume(void);
+
+    bool getVertices(std::vector<Point> &vertices) const;
+    Polyhedron const& getMesh(void) const;
 
     Polyhedron getBoundingBox(double scale=1.0) const;
     void getBoundingBox(double &maxX, double &minX, double &maxY, double &minY, double &maxZ, double &minZ, double scale=1.0) const;
@@ -79,6 +86,10 @@ protected:
     bool loadFromTrimesh(trimesh::TriMesh *M, double duplicate_dist);
     static double manhattan_distance(double xA, double yA, double zA,
                                      double xB, double yB, double zB);
+    static double euclidean_distance(double xA, double yA, double zA,
+                                     double xB, double yB, double zB);
+    static double triangleArea(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy, double cz);
+    static bool removeDegenerateFacets(Polyhedron &meshData);
     static bool write_to_trimesh(Polyhedron const& P, trimesh::TriMesh *M);
     static void remove_duplicates(trimesh::TriMesh *M, double duplicate_dist);
     void update_properties(void);
@@ -123,6 +134,7 @@ protected:
     int nr_faces;
     int nr_connected_components;
     int Euler_characteristic;
+    double volume;
 };
 
 typedef std::map<std::string, MeshEntry*> MeshMap;

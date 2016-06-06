@@ -79,13 +79,9 @@ protected:
 
 void getNormal(Polyhedron::Face_const_handle const& f, double &x, double &y, double &z)
 {
-    std::cerr << "DBG getting normal " << std::endl;
     Polyhedron::Halfedge_around_facet_const_circulator hc_a = f->facet_begin();
-    std::cerr << "DBG circs " << std::endl;
     Polyhedron::Halfedge_around_facet_const_circulator hc_b = hc_a; hc_b++;
-    std::cerr << "DBG circs " << std::endl;
     Polyhedron::Halfedge_around_facet_const_circulator hc_c = hc_b; hc_c++;
-    std::cerr << "DBG circs " << std::endl;
 
     double x1, x2, x3, y1, y2, y3, z1, z2, z3;
     x1 = ::CGAL::to_double(hc_a->vertex()->point().x());
@@ -113,11 +109,224 @@ void getNormal(Polyhedron::Face_const_handle const& f, double &x, double &y, dou
     z = -(vxX*vyY) + (vyX*vxY);
 
     double l = std::sqrt(x*x + y*y + z*z);
-    std::cerr << "DBG normal " << x << " " << y << " " << z << " " << l << std::endl;
     x /= l;
     y /= l;
     z /= l;
 }
+
+template <class HDS>
+class Build_prism : public CGAL::Modifier_base<HDS> {
+public:
+    Build_prism(Polyhedron::Facet_const_iterator const& it, double height, double depth, bool filter = false, double zcomp = 0):
+        facetIt(it), height(height), depth(depth), filter(filter), zcomp(zcomp)
+    {}
+    void operator()(HDS& hds)
+    {
+        CGAL::Polyhedron_incremental_builder_3<HDS> B(hds, true);
+        double nx, ny, nz;
+        getFaceNormal(facetIt, nx, ny, nz);
+        //std::cerr << " " << nx << " " << ny << " " << nz << " | 0 0 " << zcomp << std::endl;
+        if(((nx*nx + ny*ny + nz*nz) < 0.8) ||
+                ((!filter) && ((nz < 0.000001) && (-0.000001 < nz))) ||
+                (filter && (nz < zcomp)))
+        {
+            //std::cerr << "    Filtered out" << std::endl;
+            return;
+        }
+
+        B.begin_surface(6, 5, 0);
+        Polyhedron::Halfedge_around_facet_const_circulator hc_end = facetIt->facet_begin();
+        Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end;
+        int maxK = 0;
+        int vIndex = 0;
+        do
+        {
+            double x = ::CGAL::to_double(hc_a->vertex()->point().x());
+            double y = ::CGAL::to_double(hc_a->vertex()->point().y());
+            B.add_vertex(Polyhedron::Point_3(x, y, height));
+            B.add_vertex(Polyhedron::Point_3(x, y, depth));
+            maxK++;
+            vIndex += 2;
+            hc_a++;
+        }while(hc_a != hc_end);
+
+        B.begin_facet();
+        vIndex = 0;
+        do
+        {
+            B.add_vertex_to_facet(vIndex);
+            hc_a++; vIndex += 2;
+        }while(hc_a != hc_end);
+        B.end_facet();
+        B.begin_facet();
+        vIndex = maxK*2 - 1;
+        do
+        {
+            B.add_vertex_to_facet(vIndex);
+            hc_a++; vIndex -= 2;
+        }while(hc_a != hc_end);
+        B.end_facet();
+
+        vIndex = 0;
+        do
+        {
+            B.begin_facet();
+            B.add_vertex_to_facet(getIndex(vIndex + 0, maxK));
+            B.add_vertex_to_facet(getIndex(vIndex + 1, maxK));
+            B.add_vertex_to_facet(getIndex(vIndex + 3, maxK));
+            B.end_facet();
+            B.begin_facet();
+            B.add_vertex_to_facet(getIndex(vIndex + 3, maxK));
+            B.add_vertex_to_facet(getIndex(vIndex + 2, maxK));
+            B.add_vertex_to_facet(getIndex(vIndex + 0, maxK));
+            B.end_facet();
+            hc_a++; vIndex += 2;
+        }while(hc_a != hc_end);
+        B.end_surface();
+    }
+
+protected:
+    bool getFaceNormal(Polyhedron::Facet_const_iterator const& it, double &x, double &y, double &z)
+    {
+        Polyhedron::Halfedge_around_facet_const_circulator hc_end = it->facet_begin();
+        Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end;
+        Polyhedron::Halfedge_around_facet_const_circulator hc_b = hc_a; hc_b++;
+
+        x = 0; y = 0; z = 0;
+        do
+        {
+            double ax = ::CGAL::to_double(hc_a->vertex()->point().x());
+            double ay = ::CGAL::to_double(hc_a->vertex()->point().y());
+            double az = ::CGAL::to_double(hc_a->vertex()->point().z());
+            double bx = ::CGAL::to_double(hc_b->vertex()->point().x());
+            double by = ::CGAL::to_double(hc_b->vertex()->point().y());
+            double bz = ::CGAL::to_double(hc_b->vertex()->point().z());
+            x += (ay - by)*(az + bz);
+            y += (az - bz)*(ax + bx);
+            z += (ax - bx)*(ay + by);
+            hc_a++;
+            hc_b++;
+        }while(hc_a != hc_end);
+
+        double l = std::sqrt(x*x + y*y + z*z);
+        if(l < 0.000001)
+        {
+            x = 0;
+            y = 0;
+            z = 0;
+            return true;
+        }
+        x /= l;
+        y /= l;
+        z /= l;
+        return true;
+    }
+
+    int getIndex(int k, int maxK)
+    {
+        if((2*maxK) <= k)
+            k -= (2*maxK);
+        return k;
+    }
+
+    Polyhedron::Facet_const_iterator facetIt;
+    double height;
+    double depth;
+    bool filter;
+    double zcomp;
+};
+
+template <class HDS>
+class Build_normal_selection : public CGAL::Modifier_base<HDS> {
+public:
+    Build_normal_selection(Polyhedron const& mesh, double angle, double x, double y, double z):
+        mesh(mesh), angle(angle), x(x), y(y), z(z)
+    {
+        double l = std::sqrt(x*x + y*y + z*z);
+        x /= l;
+        y /= l;
+        z /= l;
+    }
+    void operator()(HDS& hds)
+    {
+        CGAL::Polyhedron_incremental_builder_3<HDS> B(hds, true);
+
+        B.begin_surface(mesh.size_of_vertices(), mesh.size_of_facets(), 0);
+
+        typedef CGAL::Inverse_index<Polyhedron::Vertex_const_iterator> Index;
+        //Index index( mesh.vertices_begin(), mesh.vertices_end());
+        int vIndex = 0;
+
+        for(Polyhedron::Facet_const_iterator it = mesh.facets_begin(); it!= mesh.facets_end(); it++)
+        {
+            double xf, yf, zf;
+            getFaceNormal(it, xf, yf, zf);
+            double anglef = getAngle(x, y, z, xf, yf, zf);
+            if(anglef < angle)
+            {
+                Polyhedron::Halfedge_around_facet_const_circulator hc_end = it->facet_begin();
+                Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end;
+
+                do
+                {
+                    B.add_vertex(Polyhedron::Point_3(::CGAL::to_double(hc_a->vertex()->point().x()),
+                                                     ::CGAL::to_double(hc_a->vertex()->point().y()),
+                                                     ::CGAL::to_double(hc_a->vertex()->point().z())));
+                    hc_a++;
+                }while(hc_a != hc_end);
+
+                hc_end = it->facet_begin();
+                hc_a = hc_end;
+                B.begin_facet();
+                do
+                {
+                    B.add_vertex_to_facet(vIndex); hc_a++; vIndex++;
+                }while(hc_a != hc_end);
+                B.end_facet();
+            }
+        }
+
+        B.end_surface();
+    }
+
+protected:
+    double getAngle(double x1, double y1, double z1, double x2, double y2, double z2)
+    {
+        return std::acos(x1*x2 + y1*y2 + z1*z2);
+    }
+
+    bool getFaceNormal(Polyhedron::Facet_const_iterator const& it, double &x, double &y, double &z)
+    {
+        Polyhedron::Halfedge_around_facet_const_circulator hc_end = it->facet_begin();
+        Polyhedron::Halfedge_around_facet_const_circulator hc_a = hc_end;
+        Polyhedron::Halfedge_around_facet_const_circulator hc_b = hc_a; hc_b++;
+
+        x = 0; y = 0; z = 0;
+        do
+        {
+            double ax = ::CGAL::to_double(hc_a->vertex()->point().x());
+            double ay = ::CGAL::to_double(hc_a->vertex()->point().y());
+            double az = ::CGAL::to_double(hc_a->vertex()->point().z());
+            double bx = ::CGAL::to_double(hc_b->vertex()->point().x());
+            double by = ::CGAL::to_double(hc_b->vertex()->point().y());
+            double bz = ::CGAL::to_double(hc_b->vertex()->point().z());
+            x += (ay - by)*(az + bz);
+            y += (az - bz)*(ax + bx);
+            z += (ax - bx)*(ay + by);
+            hc_a++;
+            hc_b++;
+        }while(hc_a != hc_end);
+
+        double l = std::sqrt(x*x + y*y + z*z);
+        x /= l;
+        y /= l;
+        z /= l;
+        return true;
+    }
+
+    Polyhedron const& mesh;
+    double angle, x, y, z;
+};
 
 template <class HDS>
 class Build_solidification : public CGAL::Modifier_base<HDS> {
@@ -159,7 +368,6 @@ public:
                 vit++;
             }while(vit != it->vertex_begin());
             double l = std::sqrt(nx*nx + ny*ny + nz*nz);
-            std::cerr << "DBG nrsum " << nx << " " << ny << " " << nz << " " << l << std::endl;
             nx /= l;
             ny /= l;
             nz /= l;
