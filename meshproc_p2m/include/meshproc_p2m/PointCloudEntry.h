@@ -12,12 +12,13 @@ public:
 
     bool loadFromFile(std::string const& filename);
     bool cloud2Mesh(double cellSize);
-    bool writeMeshToFile(std::string const& filename) const;
+    bool writeMeshToFile(double gridsize, std::string const& filename) const;
 
 private:
-    static bool write_to_trimesh(Reconstruction const& R, Point_collection const& P, trimesh::TriMesh *M);
+    static bool write_to_trimesh(double gridsize, std::vector<AFSFacet> const& R, Point_collection const& P, trimesh::TriMesh *M);
     Reconstruction mesh;
     Point_collection points;
+    std::vector<AFSFacet> facets;
 };
 
 }

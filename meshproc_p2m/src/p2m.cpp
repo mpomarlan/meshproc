@@ -31,7 +31,7 @@ bool do_Cloud2Mesh(meshproc_msgs::Cloud2Mesh::Request &req,
     res.input_found = pce.loadFromFile(req.input_filename);
     res.operation_done = false;
     if(res.input_found)
-        res.operation_done = pce.cloud2Mesh(req.cell_size) && pce.writeMeshToFile(req.output_filename);
+        res.operation_done = pce.cloud2Mesh(req.cell_size) && pce.writeMeshToFile(req.cell_size, req.output_filename);
     return true;
 }
 

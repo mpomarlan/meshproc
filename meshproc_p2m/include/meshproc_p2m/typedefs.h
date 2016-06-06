@@ -11,6 +11,7 @@ typedef std::vector< Point >                                    Point_collection
 typedef Reconstruction::Triple_const_iterator                   Triple_iterator;
 typedef CGAL::Polyhedron_3<Kernel> Polyhedron;
 
+typedef CGAL::cpp11::array<std::size_t,3> AFSFacet;
 }
 
 #endif

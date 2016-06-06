@@ -26,6 +26,9 @@
 #include <CGAL/mst_orient_normals.h>
 #include <CGAL/bilateral_smooth_point_set.h>
 
+#include <CGAL/Advancing_front_surface_reconstruction.h>
+#include <CGAL/tuple.h>
+
 #include <CGAL/Polyhedron_3.h>
 #include <CGAL/IO/Polyhedron_iostream.h>
 
@@ -40,6 +43,30 @@
 
 namespace meshproc_p2m
 {
+
+struct Perimeter {
+  double bound;
+  Perimeter(double bound)
+    : bound(bound)
+  {}
+  // The point type that will be injected here will be
+  // CGAL::Exact_predicates_inexact_constructions_kernel::Point_3
+  template <typename Point>
+  bool operator()(const Point& p, const Point& q, const Point& r) const
+  {
+    // bound == 0 is better than bound < infinity
+    // as it avoids the distance computations
+    if(bound == 0){
+      return false;
+    }
+    double d  = sqrt(squared_distance(p,q));
+    if(d>bound) return true;
+    d += sqrt(squared_distance(p,r)) ;
+    if(d>bound) return true;
+    d+= sqrt(squared_distance(q,r));
+    return d>bound;
+  }
+};
 
 bool PointCloudEntry::loadFromFile(std::string const& filename)
 {
@@ -98,25 +125,44 @@ bool PointCloudEntry::cloud2Mesh(double cellSize)
     points.erase(CGAL::grid_simplify_point_set(points.begin(), points.end(), cellSize),
                  points.end());
 
-    mesh.insert(points.begin(), points.end());
-    mesh.increase_scale(1);
-    mesh.reconstruct_surface();
+    //mesh.insert(points.begin(), points.end());
+    //mesh.increase_scale(1);
+    //mesh.reconstruct_surface();
+    facets.clear();
+
+    Perimeter perimeter(0);
+    CGAL::advancing_front_surface_reconstruction(points.begin(), points.end(), std::back_inserter(facets), perimeter);
     return true;
 }
 
-bool PointCloudEntry::writeMeshToFile(std::string const& filename) const
+bool PointCloudEntry::writeMeshToFile(double gridsize, std::string const& filename) const
 {
     trimesh::TriMesh M;
-    PointCloudEntry::write_to_trimesh(mesh, points, &M);
+    PointCloudEntry::write_to_trimesh(gridsize, facets, points, &M);
     return M.write(filename.c_str());
 }
 
-bool PointCloudEntry::write_to_trimesh(Reconstruction const& R, Point_collection const& P, trimesh::TriMesh *M)
+double getDistance(Point_collection const& points, int A, int B)
+{
+    double xA, yA, zA, xB, yB, zB;
+    xA = ::CGAL::to_double(points[A].x());
+    yA = ::CGAL::to_double(points[A].y());
+    zA = ::CGAL::to_double(points[A].z());
+    xB = ::CGAL::to_double(points[B].x());
+    yB = ::CGAL::to_double(points[B].y());
+    zB = ::CGAL::to_double(points[B].z());
+    double dx = xA - xB;
+    double dy = yA - yB;
+    double dz = zA - zB;
+    return std::sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+bool PointCloudEntry::write_to_trimesh(double gridsize, std::vector<AFSFacet> const& R, Point_collection const& P, trimesh::TriMesh *M)
 {
     M->vertices.clear();
     M->faces.clear();
     M->vertices.reserve(P.size());
-    M->faces.reserve(R.number_of_triangles());
+    M->faces.reserve(R.size());
     for(Point_collection::const_iterator it = P.begin();
         it != P.end(); it++)
     {
@@ -126,12 +172,15 @@ bool PointCloudEntry::write_to_trimesh(Reconstruction const& R, Point_collection
 
     }
 
-    for(std::size_t shell = 0; shell < R.number_of_shells(); shell++)
+    double dt = 2.5*gridsize;
+    for(std::vector<AFSFacet>::const_iterator it = R.begin(); it != R.end(); it++)
     {
-        for(Reconstruction::Triple_const_iterator it = R.shell_begin(shell); it != R.shell_end(shell); it++)
-        {
+        double dAB, dBC, dAC;
+        dAB = getDistance(P, (*it)[0], (*it)[1]);
+        dBC = getDistance(P, (*it)[1], (*it)[2]);
+        dAC = getDistance(P, (*it)[0], (*it)[2]);
+        if((dAB < dt) && (dBC < dt) && (dAC < dt))
             M->faces.push_back(trimesh::TriMesh::Face((*it)[0], (*it)[1], (*it)[2]));
-        }
     }
     return true;
 }
