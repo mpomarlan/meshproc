@@ -30,11 +30,13 @@ set(SRV_FILES
   GetNearMeshVertices.srv
   GetPolygonSkeleton.srv
   LoadMesh.srv
+  Mesh2Prism.srv
   PolygonConvexDecomposition.srv
   PolygonCSGRequest.srv
   PolygonExtrude.srv
   PolygonVisibility.srv
   ProjectMesh.srv
+  SelectByNormal.srv
   SolidifyMesh.srv
   UnloadMesh.srv
 )

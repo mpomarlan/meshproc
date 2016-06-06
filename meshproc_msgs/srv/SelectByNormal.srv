@@ -1,0 +1,13 @@
+string mesh_A
+string mesh_R
+geometry_msgs/Vector3 normal
+float64 tolerated_angle
+int8 return_result
+int8 result_to_file
+string result_filename
+---
+int8 mesh_A_loaded
+int8 operation_performed
+int8 file_written
+shape_msgs/Mesh result
+

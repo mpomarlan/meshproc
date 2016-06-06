@@ -10,4 +10,5 @@ int32 num_faces
 int32 num_edges
 int32 num_connected_components
 int32 Euler_characteristic
+float64 volume
 
