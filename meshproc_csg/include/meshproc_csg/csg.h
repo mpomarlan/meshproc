@@ -88,8 +88,6 @@ protected:
                                      double xB, double yB, double zB);
     static double euclidean_distance(double xA, double yA, double zA,
                                      double xB, double yB, double zB);
-    static double triangleArea(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy, double cz);
-    static bool removeDegenerateFacets(Polyhedron &meshData);
     static bool write_to_trimesh(Polyhedron const& P, trimesh::TriMesh *M);
     static void remove_duplicates(trimesh::TriMesh *M, double duplicate_dist);
     void update_properties(void);

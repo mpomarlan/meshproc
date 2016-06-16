@@ -9,7 +9,7 @@ now calls a custom version, which uses ::CGAL::to_double.*/
 namespace CGAL {
 
 template <class Facet, class Kernel>
-typename Kernel::Vector_3 compute_exact_facet_normal(const Facet& f)
+typename Kernel::Vector_3 compute_exact_facet_normal_internal(const Facet& f, double &len)
 {
   typedef typename Kernel::Point_3 Point;
   typedef typename Kernel::Vector_3 Vector;
@@ -25,7 +25,57 @@ typename Kernel::Vector_3 compute_exact_facet_normal(const Facet& f)
     Vector n = CGAL::cross_product(next-curr,prev-curr);
     normal = normal + n;
   }
-  return normal / std::sqrt(::CGAL::to_double(normal * normal));
+
+  double aux = std::sqrt(::CGAL::to_double(normal * normal));
+  if(aux < 0.0001)
+  {
+      len  = 0.0;
+      return CGAL::NULL_VECTOR;
+  }
+  len = 1.0;
+  return normal / aux;
+}
+
+
+template <class Facet, class Kernel>
+typename Kernel::Vector_3 compute_exact_facet_normal(const Facet& f)
+{
+  typedef typename Kernel::Point_3 Point;
+  typedef typename Kernel::Vector_3 Vector;
+  typedef typename Facet::Halfedge_around_facet_const_circulator HF_circulator;
+  double len;
+  Vector normal = compute_exact_facet_normal_internal<Facet, Kernel>(f, len);
+  if(len < 0.0001)
+  {
+      std::cerr << "WARNING: degenerate face detected, attempting to compute normal based on neighbours." << std::endl;
+      HF_circulator he = f.facet_begin();
+      HF_circulator end = he;
+      CGAL_For_all(he, end)
+      {
+          std::cerr << "    neighbour:" << std::endl;
+          double lenOpp = 0.0;
+          Vector normalOpp = compute_exact_facet_normal_internal<Facet, Kernel>(*(he->opposite()->facet()), lenOpp);
+          std::cerr << "    " << lenOpp << ": "
+                    << ::CGAL::to_double(normalOpp.x())
+                    << " "  << ::CGAL::to_double(normalOpp.y())
+                    << " "  << ::CGAL::to_double(normalOpp.z())
+                    << std::endl;
+          normal = normal + normalOpp;
+      }
+      len = std::sqrt(::CGAL::to_double(normal * normal));
+      if(len < 0.0001)
+      {
+          std::cerr << "    WARNING: spike detected." << std::endl;
+          return Vector(1, 0, 0);
+      }
+      std::cerr << "    Returning a neighbour-based normal of len " << len
+                << ": " << ::CGAL::to_double(normal.x())
+                << " " << ::CGAL::to_double(normal.y())
+                << " " << ::CGAL::to_double(normal.z())
+                << std::endl;
+      return normal/len;
+  }
+  return normal;
 }
 
 template <class Polyhedron>
@@ -149,6 +199,10 @@ public:
         typename CDT::Face_handle fh = eit->first;
         const int index = eit->second;
         typename CDT::Face_handle opposite_fh = fh->neighbor(eit->second);
+
+        if((fh == 0) || (opposite_fh == 0))
+            std::cerr << "ERROR: either fh is zero (" << (fh == 0) << ") or opposite_fh is zero (" << (opposite_fh == 0) << ")" << std::endl;
+
         const int opposite_index = opposite_fh->index(fh);
         const typename CDT::Vertex_handle va = fh->vertex(cdt. cw(index));
         const typename CDT::Vertex_handle vb = fh->vertex(cdt.ccw(index));
