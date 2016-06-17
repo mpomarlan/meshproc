@@ -22,7 +22,9 @@
 #include <CGAL/Constrained_Delaunay_triangulation_2.h>
 #include <CGAL/Triangulation_face_base_with_info_2.h>
 
+#include <CGAL/Surface_mesh_shortest_path.h>
 #include <CGAL/boost/graph/graph_traits_Polyhedron_3.h>
+#include <CGAL/boost/graph/iterator.h>
 
 
 #include <CGAL/Kernel/global_functions_3.h>
@@ -70,6 +72,24 @@ namespace meshproc_csg
 
 typedef CGAL::Polygon_with_holes_2<Kernel> Polygon_with_holes;
 typedef CGAL::Polygon_2<Kernel> Polygon;
+
+typedef CGAL::Surface_mesh_shortest_path_traits<Kernel, Polyhedron> Traits;
+// default property maps
+typedef boost::property_map<Polyhedron,
+                            boost::vertex_external_index_t>::type  Vertex_index_map;
+typedef boost::property_map<Polyhedron,
+                            CGAL::halfedge_external_index_t>::type Halfedge_index_map;
+typedef boost::property_map<Polyhedron,
+                            CGAL::face_external_index_t>::type     Face_index_map;
+typedef CGAL::Surface_mesh_shortest_path<Traits,
+                                         Vertex_index_map,
+                                         Halfedge_index_map,
+                                         Face_index_map>  Surface_mesh_shortest_path;
+typedef boost::graph_traits<Polyhedron> Graph_traits;
+typedef Graph_traits::vertex_iterator vertex_iterator;
+typedef Graph_traits::halfedge_iterator halfedge_iterator;
+typedef Graph_traits::face_iterator face_iterator;
+
 
 /******************************************************************************************/
 /*** The code here is taken from the CGAL example Triangulation_2/polygon_triangulation ***/
@@ -1084,6 +1104,157 @@ bool MeshEntry::getNearVertices(double x, double y, double z, double distance, s
             points.push_back(aux);
         }
     }
+    return true;
+}
+
+bool MeshEntry::getIntersectionPoint(Point const& A, Point const& B, Point & R, double &bA, double &bB, double &bC, int & fh)
+{
+    bool retq = false;
+    double distance = 1000000.0;
+
+    double d00;
+    double d01;
+    double d11;
+    double d20;
+    double d21;
+    double denom;
+
+    fh = 0;
+    int k = 0;
+    for(Polyhedron::Facet_iterator fit = mesh_data.facets_begin();
+        fit != mesh_data.facets_end(); fit++, k++)
+    {
+        Polyhedron::Halfedge_around_facet_circulator ha = fit->facet_begin();
+        Polyhedron::Halfedge_around_facet_circulator hb = ha; hb++;
+        Polyhedron::Halfedge_around_facet_circulator hc = hb; hc++;
+        Kernel::Triangle_3 triangle(ha->vertex()->point(), hb->vertex()->point(), hc->vertex()->point());
+        Kernel::Line_3 line(A, B);
+        CGAL::cpp11::result_of<Kernel::Intersect_3(Kernel::Line_3,  Kernel::Triangle_3)>::type result = CGAL::intersection(line, triangle);
+        if(result)
+        {
+            Point candidate;
+            if(const Kernel::Segment_3* s = boost::get<Kernel::Segment_3>(&*result))
+            {
+                double distS = ::CGAL::to_double(CGAL::squared_distance(s->source(), A));
+                double distT = ::CGAL::to_double(CGAL::squared_distance(s->target(), A));
+                if(distS < distT)
+                    candidate = s->source();
+                else
+                    candidate = s->target();
+            }
+            else
+                candidate = *(boost::get<Kernel::Point_3>(&*result));
+
+            Kernel::Vector_3 v0 = hb->vertex()->point() - ha->vertex()->point();
+            Kernel::Vector_3 v1 = hc->vertex()->point() - ha->vertex()->point();
+            Kernel::Vector_3 v2 = candidate - ha->vertex()->point();
+
+            double a00 = ::CGAL::to_double(v0*v0);
+            double a01 = ::CGAL::to_double(v0*v1);
+            double a11 = ::CGAL::to_double(v1*v1);
+            double a20 = ::CGAL::to_double(v2*v0);
+            double a21 = ::CGAL::to_double(v2*v1);
+            double anom = a00*a11 - a01*a01;
+
+            // A little hack: skip triangles in which it would be unstable to compute bar. coords.
+            if(anom < 0.000001)
+                continue;
+
+            if(!retq)
+            {
+                R = candidate;
+                fh = k;
+                distance = ::CGAL::to_double(CGAL::squared_distance(candidate, A));
+                d00 = a00;
+                d01 = a01;
+                d11 = a11;
+                d20 = a20;
+                d21 = a21;
+                denom = anom;
+            }
+            else
+            {
+                double auxD = ::CGAL::to_double(CGAL::squared_distance(candidate, A));
+                if(auxD < distance)
+                {
+                    distance = auxD;
+                    R = candidate;
+                    fh = k;
+                    d00 = a00;
+                    d01 = a01;
+                    d11 = a11;
+                    d20 = a20;
+                    d21 = a21;
+                    denom = anom;
+                }
+            }
+            retq = true;
+        }
+        //else: no intersection
+    }
+    if(retq)
+    {
+        denom = 1.0/denom;
+        bB = (d11*d20 - d01*d21)*denom;
+        bC = (d00*d21 - d01*d20)*denom;
+        bA = 1.0 - bB - bC;
+    }
+    return retq;
+}
+
+bool MeshEntry::getGeodesicPath(geometry_msgs::Point const& A, geometry_msgs::Point const& B, geometry_msgs::Point const& C, geometry_msgs::Point const& D, std::vector<geometry_msgs::Point> &path)
+{
+
+    Surface_mesh_shortest_path shortest_paths(mesh_data,
+                                              get(boost::vertex_external_index, mesh_data),
+                                              get(CGAL::halfedge_external_index, mesh_data),
+                                              get(CGAL::face_external_index, mesh_data),
+                                              get(CGAL::vertex_point, mesh_data));
+
+    Point R;
+    double bA, bB, bC;
+    int faceSrc, faceDest;
+    std::vector<Traits::Point_3> points;
+    points.clear();
+    path.clear();
+
+    if(!getIntersectionPoint(Point(A.x, A.y, A.z), Point(B.x, B.y, B.z), R, bA, bB, bC, faceDest))
+        return false;
+    std::cerr << "Found intersection point ("
+              << ::CGAL::to_double(R.x()) << " "
+              << ::CGAL::to_double(R.y()) << " "
+              << ::CGAL::to_double(R.z()) << ") baryc.("
+              << bA << " " << bB << " " << bC << ")" << std::endl;
+    Traits::Barycentric_coordinate faceLocationDest = {{bC, bA, bB}};
+    if(!getIntersectionPoint(Point(C.x, C.y, C.z), Point(D.x, D.y, D.z), R, bA, bB, bC, faceSrc))
+        return false;
+    std::cerr << "Found intersection point ("
+              << ::CGAL::to_double(R.x()) << " "
+              << ::CGAL::to_double(R.y()) << " "
+              << ::CGAL::to_double(R.z()) << ") baryc.("
+              << bA << " " << bB << " " << bC << ")" << std::endl;
+    Traits::Barycentric_coordinate faceLocationSrc = {{bC, bA, bB}};
+
+    Polyhedron::Facet_iterator pfit = mesh_data.facets_begin();
+    std::advance(pfit, faceSrc);
+    face_iterator faceItSrc(pfit);
+    pfit = mesh_data.facets_begin();
+    std::advance(pfit, faceDest);
+    face_iterator faceItDest(pfit);
+
+    shortest_paths.add_source_point(*faceItSrc, faceLocationSrc);
+    shortest_paths.shortest_path_points_to_source_points(*faceItDest, faceLocationDest, std::back_inserter(points));
+
+    int maxK = points.size();
+    for(int k = 0; k < maxK; k++)
+    {
+        geometry_msgs::Point aux;
+        aux.x = ::CGAL::to_double(points[k].x());
+        aux.y = ::CGAL::to_double(points[k].y());
+        aux.z = ::CGAL::to_double(points[k].z());
+        path.push_back(aux);
+    }
+
     return true;
 }
 

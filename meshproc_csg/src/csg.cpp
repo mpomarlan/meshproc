@@ -22,6 +22,7 @@
 #include <meshproc_msgs/ConvexDecomposition.h>
 #include <meshproc_msgs/GetMeshSkeleton.h>
 #include <meshproc_msgs/ConvexHull.h>
+#include <meshproc_msgs/PathOnMesh.h>
 #include <meshproc_msgs/ProjectMesh.h>
 #include <meshproc_msgs/Mesh2Prism.h>
 #include <meshproc_msgs/SelectByNormal.h>
@@ -626,6 +627,28 @@ bool do_Mesh2Prism(meshproc_msgs::Mesh2Prism::Request &req,
     return true;
 }
 
+bool do_PathOnMesh(meshproc_msgs::PathOnMesh::Request &req,
+                       meshproc_msgs::PathOnMesh::Response &res)
+{
+    MeshMap::iterator itA = loadedMeshes.find(req.mesh_name);
+    res.mesh_loaded = true;
+    res.operation_performed = false;
+
+    if(itA == loadedMeshes.end())
+    {
+        res.mesh_loaded = false;
+        return true;
+    }
+
+    MeshEntry *A;
+    A = itA->second;
+
+    res.operation_performed = A->getGeodesicPath(req.lina_start, req.lina_end, req.linb_start, req.linb_end,
+                                                 res.path);
+
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
   ros::init(argc, argv, "meshproc_csg");
@@ -645,6 +668,7 @@ int main(int argc, char *argv[])
   ros::ServiceServer GetMeshSkeleton_service = n.advertiseService("meshproc_csg/GetMeshSkeleton", do_GetMeshSkeleton);
   ros::ServiceServer ConvexHull_service = n.advertiseService("meshproc_csg/ConvexHull", do_ConvexHull);
   ros::ServiceServer ProjectMesh_service = n.advertiseService("meshproc_csg/ProjectMesh", do_ProjectMesh);
+  ros::ServiceServer PathOnMesh_service = n.advertiseService("meshproc_csg/PathOnMesh", do_PathOnMesh);
   ros::ServiceServer Mesh2Prism_service = n.advertiseService("meshproc_csg/Mesh2Prism", do_Mesh2Prism);
   ros::ServiceServer SolidifyMesh_service = n.advertiseService("meshproc_csg/SolidifyMesh", do_SolidifyMesh);
   ros::ServiceServer selectByNormal_service = n.advertiseService("meshproc_csg/SelectByNormal", do_SelectByNormal);

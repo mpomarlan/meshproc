@@ -31,6 +31,7 @@ set(SRV_FILES
   GetPolygonSkeleton.srv
   LoadMesh.srv
   Mesh2Prism.srv
+  PathOnMesh.srv
   PolygonConvexDecomposition.srv
   PolygonCSGRequest.srv
   PolygonExtrude.srv

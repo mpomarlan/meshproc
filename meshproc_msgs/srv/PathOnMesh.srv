@@ -1,0 +1,10 @@
+geometry_msgs/Point lina_start
+geometry_msgs/Point lina_end
+geometry_msgs/Point linb_start
+geometry_msgs/Point linb_end
+string mesh_name
+---
+int8 mesh_loaded
+int8 operation_performed
+geometry_msgs/Point[] path
+

@@ -82,12 +82,15 @@ public:
 
     bool getNearVertices(double x, double y, double z, double distance, std::vector<MeshEntry::XYZTriplet> &points) const;
 
+    bool getGeodesicPath(geometry_msgs::Point const& A, geometry_msgs::Point const& B, geometry_msgs::Point const& C, geometry_msgs::Point const& D, std::vector<geometry_msgs::Point> &path);
+
 protected:
     bool loadFromTrimesh(trimesh::TriMesh *M, double duplicate_dist);
     static double manhattan_distance(double xA, double yA, double zA,
                                      double xB, double yB, double zB);
     static double euclidean_distance(double xA, double yA, double zA,
                                      double xB, double yB, double zB);
+    bool getIntersectionPoint(Point const& A, Point const& B, Point & R, double &bA, double &bB, double &bC, int & fh);
     static bool write_to_trimesh(Polyhedron const& P, trimesh::TriMesh *M);
     static void remove_duplicates(trimesh::TriMesh *M, double duplicate_dist);
     void update_properties(void);
