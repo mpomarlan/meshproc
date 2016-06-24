@@ -69,11 +69,13 @@ set( spec_libs
      )
 
 add_library(meshproc_p2m_lib ./src/PointCloudEntry.cpp)
+add_dependencies(meshproc_p2m_lib ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(meshproc_p2m_lib
   ${CGAL_LIBRARIES} ${CGAL_3RD_PARTY_LIBRARIES} ${EIGEN_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES} ${PCL_LIBRARIES})
 
 add_executable(${PROJECT_NAME} ${sources} ${headers})
 add_to_cached_list( CGAL_EXECUTABLE_TARGETS ${PROJECT_NAME} )
+add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME}
   meshproc_p2m_lib ${CGAL_LIBRARIES} ${CGAL_3RD_PARTY_LIBRARIES} ${EIGEN_LIBRARIES} ${catkin_LIBRARIES} ${spec_libs} ${Boost_LIBRARIES})
 
